@@ -13,6 +13,8 @@
     <Description>Plugin SDK for SemanticAgentBroker. Reference this package to create custom agent plugins that are loaded dynamically at runtime.</Description>
     <PackageTags>semantic-kernel;agent;plugin;sdk;extensible</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+	<PackageProjectUrl>https://github.com/gbastecki/SemanticAgentBroker</PackageProjectUrl>
+	<RepositoryUrl>https://github.com/gbastecki/SemanticAgentBroker</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

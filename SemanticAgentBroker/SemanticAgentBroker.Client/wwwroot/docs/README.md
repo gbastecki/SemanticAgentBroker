@@ -1,6 +1,7 @@
 # Semantic Agent Broker
 
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512bd4.svg)](https://dotnet.microsoft.com/download)
+[![NuGet](https://img.shields.io/badge/NuGet-SemanticAgentBroker.Sdk-blue.svg?logo=nuget)](https://www.nuget.org/packages/SemanticAgentBroker.Sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Offline Ready](https://img.shields.io/badge/Air--Gapped-100%25%20Offline-success.svg)
 
@@ -89,6 +90,8 @@ Upon task completion, the agent presents structured Markdown analytics, includin
 
 ### 3. Dynamic Plugin Ecosystem
 Inspect, enable, or disable built-in and third-party C# plugins at runtime without restarting the broker. Explore declared method capabilities, required execution parameters, and fine-grained permissions.
+
+*Note: The SDK for building custom plugins is available on NuGet: [**SemanticAgentBroker.Sdk**](https://www.nuget.org/packages/SemanticAgentBroker.Sdk).*
 
 ![Plugin Management](screenshots/PluginView.png)
 
@@ -215,6 +218,28 @@ dotnet test SemanticAgentBroker\SemanticAgentBroker.UnitTests\SemanticAgentBroke
 ```
 
 *Note: Tests run with method-level parallelization and use isolated in-memory/temp SQLite databases, sandbox fixtures, and Moq test doubles.*
+
+---
+
+## Plugin Development (SDK)
+
+Third-party plugins can be built as standalone .NET class libraries without referencing the full broker repository. The core plugin interfaces and metadata contracts are published on NuGet:
+
+[![NuGet](https://img.shields.io/badge/NuGet-SemanticAgentBroker.Sdk-blue.svg?logo=nuget)](https://www.nuget.org/packages/SemanticAgentBroker.Sdk)
+
+Install the SDK via the .NET CLI:
+
+```powershell
+dotnet add package SemanticAgentBroker.Sdk
+```
+
+Or reference it in your `.csproj`:
+
+```xml
+<PackageReference Include="SemanticAgentBroker.Sdk" Version="1.0.0" />
+```
+
+Package details: **[https://www.nuget.org/packages/SemanticAgentBroker.Sdk](https://www.nuget.org/packages/SemanticAgentBroker.Sdk)**
 
 ---
 
