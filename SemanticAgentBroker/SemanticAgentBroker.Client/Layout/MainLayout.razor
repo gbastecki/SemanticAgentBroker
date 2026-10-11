@@ -1,0 +1,84 @@
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@inject SemanticAgentBroker.Client.Features.SignalR.ISignalRService SignalRService
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@implements IDisposable
+
+<div class="page">
+    @if (isAuthenticated && (SignalRService.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Disconnected || 
+         SignalRService.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Reconnecting ||
+         SignalRService.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connecting))
+    {
+        <div class="connecting-overlay">
+            <div class="connecting-content">
+                <div class="connecting-icon"></div>
+                <h2>Connecting...</h2>
+                <p>Establishing connection to the Semantic Agent Broker.</p>
+            </div>
+        </div>
+    }
+    <div class="sidebar @(collapseNavMenu ? "collapse" : "")">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="mobile-nav">
+            <a class="navbar-brand" href="">
+                <span class="material-symbols-outlined">dashboard</span>
+                Semantic Agent Broker
+            </a>
+            <button class="navbar-toggler" @onclick="ToggleNavMenu">
+                <span class="material-symbols-outlined">menu</span>
+            </button>
+        </div>
+
+        <article class="content">
+            @Body
+        </article>
+    </main>
+</div>
+
+    <div class="sidebar-backdrop @(!collapseNavMenu ? "active" : "")" @onclick="ToggleNavMenu"></div>
+
+@code {
+    private bool collapseNavMenu = true;
+    private bool isAuthenticated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        SignalRService.OnConnectionStateChanged += HandleConnectionChanged;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        }
+        catch { }
+    }
+
+    private void HandleConnectionChanged(Microsoft.AspNetCore.SignalR.Client.HubConnectionState state)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (!collapseNavMenu)
+        {
+            collapseNavMenu = true;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        SignalRService.OnConnectionStateChanged -= HandleConnectionChanged;
+    }
+}

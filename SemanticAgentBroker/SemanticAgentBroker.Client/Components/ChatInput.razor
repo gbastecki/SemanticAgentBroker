@@ -1,0 +1,64 @@
+@* 
+    Isolated chat input component.
+    Manages its own input state so that typing does NOT trigger StateHasChanged
+    on the parent component (LiveExecution), avoiding expensive re-diffs of
+    the entire chat/log tree on every keystroke.
+*@
+
+<div class="chat-input-area">
+    <input @bind="userInput" @bind:event="oninput" @onkeydown="HandleKeyDown"
+           placeholder="@Placeholder" />
+    @if (ShowFollowUp)
+    {
+        <button class="btn btn-primary btn-sm" @onclick="SubmitFollowUp">Follow Up</button>
+    }
+    else
+    {
+        <button class="btn btn-primary btn-sm" @onclick="Submit">
+            <span class="material-symbols-outlined">send</span>
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>Fired when the user submits a normal message (Enter or Send button).</summary>
+    [Parameter] public EventCallback<string> OnSubmit { get; set; }
+
+    /// <summary>Fired when the user clicks "Follow Up" (completed/failed task state).</summary>
+    [Parameter] public EventCallback<string> OnFollowUp { get; set; }
+
+    /// <summary>Input placeholder text.</summary>
+    [Parameter] public string Placeholder { get; set; } = "";
+
+    /// <summary>When true, shows "Follow Up" button instead of send icon.</summary>
+    [Parameter] public bool ShowFollowUp { get; set; }
+
+    private string userInput = "";
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            if (ShowFollowUp)
+                await SubmitFollowUp();
+            else
+                await Submit();
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(userInput)) return;
+        var value = userInput;
+        userInput = "";
+        await OnSubmit.InvokeAsync(value);
+    }
+
+    private async Task SubmitFollowUp()
+    {
+        if (string.IsNullOrWhiteSpace(userInput)) return;
+        var value = userInput;
+        userInput = "";
+        await OnFollowUp.InvokeAsync(value);
+    }
+}

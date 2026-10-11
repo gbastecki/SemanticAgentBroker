@@ -1,0 +1,191 @@
+@page "/queue"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject ISignalRService SignalR
+@implements IAsyncDisposable
+
+<PageTitle>Task Queue - Semantic Agent Broker</PageTitle>
+
+<div class="section-header">
+    <h1 class="section-title">Task Queue</h1>
+    <div class="btn-group align-items-center flex-wrap gap-2">
+        <div class="position-relative d-inline-flex align-items-center mr-3">
+            <input @bind="queueSearchTerm" @bind:event="oninput" type="text" class="form-control search-input-queue" placeholder="Quick filter (ID; Source; Mode; Status)" />
+            @if (!string.IsNullOrEmpty(queueSearchTerm))
+            {
+                <span class="material-symbols-outlined search-clear-icon" @onclick='() => queueSearchTerm = ""'>close</span>
+            }
+        </div>
+        @if (selectedIds.Count > 0)
+        {
+            <span class="selected-count-label">@selectedIds.Count selected</span>
+            <button class="btn btn-danger btn-sm" @onclick="ShowDeleteConfirmation" title="Delete Selected">
+                <span class="material-symbols-outlined">delete</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" @onclick="ClearSelection" title="Clear Selection">
+                <span class="material-symbols-outlined">deselect</span>
+            </button>
+        }
+        <button class="btn btn-secondary btn-sm ml-2" @onclick="RefreshTasks" disabled="@isRefreshing">
+            <span class="material-symbols-outlined @(isRefreshing ? "spin-icon" : "")">refresh</span> Refresh
+        </button>
+    </div>
+</div>
+<p class="section-subtitle">Monitor and control all agent tasks.</p>
+
+<div class="table-container" style="overflow: auto; flex: 1 1; min-height: 300px;">
+    <table class="table" style="min-width: 1000px;">
+        <thead>
+            <tr>
+                <th class="table-col-checkbox">
+                    <input type="checkbox" @onchange="ToggleSelectAll"
+                           checked="@(tasks != null && tasks.Count > 0 && tasks.All(t => selectedIds.Contains(t.Id)))" />
+                </th>
+                <th>ID</th>
+                <th>Source</th>
+                <th>Creator</th>
+                <th>Private</th>
+                <th>Mode</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (tasks == null)
+            {
+                <tr><td colspan="9">
+                    <div class="empty-state">
+                        <div class="activity-dots"><span></span><span></span><span></span></div>
+                        <div class="empty-state-text">Loading tasks...</div>
+                    </div>
+                </td></tr>
+            }
+            else if (!tasks.Any())
+            {
+                <tr><td colspan="9">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <span class="material-symbols-outlined">inbox</span>
+                        </div>
+                        <div class="empty-state-text">No tasks yet. Create one from the Dashboard.</div>
+                    </div>
+                </td></tr>
+            }
+            else
+            {
+                @foreach (var task in FilteredTasks)
+                {
+                    <tr class="@(selectedIds.Contains(task.Id) ? "selected" : "")">
+                        <td>
+                            <input type="checkbox" checked="@selectedIds.Contains(task.Id)"
+                                   @onchange="() => ToggleSelect(task.Id)" />
+                        </td>
+                        <td class="table-cell-id" title="@task.Id">
+                            @task.Id.ToString()
+                        </td>
+                        <td class="table-cell-primary">
+                            @(!string.IsNullOrEmpty(task.PluginTaskId) ? task.PluginTaskId : "Custom Task")
+                        </td>
+                        <td>@(task.CreatedByUserName ?? "Unknown")</td>
+                        <td>
+                            @if (task.IsPrivate)
+                            {
+                                <span class="material-symbols-outlined icon-private" title="Private Task">lock</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="scenario-mode">
+                                @(FormatMode(task.Mode))
+                            </span>
+                        </td>
+                        <td><span class="badge @task.State.ToString().ToLowerInvariant()">@task.State</span></td>
+                        <td class="table-cell-date">@task.CreatedAt.ToLocalTime().ToString("MMM dd, HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                        <td @onclick:stopPropagation>
+                            <div class="btn-group">
+                                <a href="/live/@task.Id" class="btn btn-primary btn-sm">
+                                    <span class="material-symbols-outlined">visibility</span>
+                                </a>
+                                @if (task.State is TaskState.InProgress)
+                                {
+                                    <button class="btn btn-warning btn-sm" @onclick="() => PauseTask(task.Id)" title="Pause">
+                                        <span class="material-symbols-outlined">pause</span>
+                                    </button>
+                                }
+                                @if (task.State is TaskState.Paused)
+                                {
+                                    <button class="btn btn-success btn-sm" @onclick="() => ResumeTask(task.Id)" title="Resume">
+                                        <span class="material-symbols-outlined">play_arrow</span>
+                                    </button>
+                                }
+                                @if (CanCancel(task.State))
+                                {
+                                    <button class="btn btn-danger btn-sm" @onclick="() => CancelTask(task.Id)" title="Cancel">
+                                        <span class="material-symbols-outlined">cancel</span>
+                                    </button>
+                                }
+                                @if (task.State is TaskState.Failed or TaskState.Cancelled or TaskState.Completed)
+                                {
+                                    <button class="btn btn-secondary btn-sm" title="Restart" @onclick="() => RestartTask(task.Id)">
+                                        <span class="material-symbols-outlined">restart_alt</span>
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    @* ── Pagination ── *@
+    @if (totalPages > 1)
+    {
+        <div class="pagination">
+            <button class="page-btn" disabled="@(currentPage <= 1)" @onclick="() => GoToPage(1)">
+                <span class="material-symbols-outlined">first_page</span>
+            </button>
+            <button class="page-btn" disabled="@(currentPage <= 1)" @onclick="() => GoToPage(currentPage - 1)">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+
+            @foreach (var p in GetPageNumbers())
+            {
+                <button class="page-btn @(p == currentPage ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
+            }
+
+            <span class="page-info">@totalCount total</span>
+
+            <button class="page-btn" disabled="@(currentPage >= totalPages)" @onclick="() => GoToPage(currentPage + 1)">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+            <button class="page-btn" disabled="@(currentPage >= totalPages)" @onclick="() => GoToPage(totalPages)">
+                <span class="material-symbols-outlined">last_page</span>
+            </button>
+        </div>
+    }
+</div>
+
+@* ── Delete Confirmation Modal ── *@
+@if (showDeleteModal)
+{
+    <div class="modal-backdrop" @onclick="() => showDeleteModal = false">
+        <div class="modal-content modal-compact" @onclick:stopPropagation>
+            <div class="confirm-dialog">
+                <div class="confirm-icon">
+                    <span class="material-symbols-outlined">delete_forever</span>
+                </div>
+                <h2 class="modal-title">Delete @selectedIds.Count Task(s)?</h2>
+                <p>This will permanently delete the selected tasks and all associated data (events, chat history, plans). This action cannot be undone.</p>
+            </div>
+            <div class="modal-actions justify-content-center">
+                <button class="btn btn-secondary" @onclick="() => showDeleteModal = false">Cancel</button>
+                <button class="btn btn-danger" @onclick="BulkDeleteConfirmed" disabled="@isDeleting">
+                    <span class="material-symbols-outlined">delete</span>
+                    @(isDeleting ? "Deleting..." : "Delete")
+                </button>
+            </div>
+        </div>
+    </div>
+}

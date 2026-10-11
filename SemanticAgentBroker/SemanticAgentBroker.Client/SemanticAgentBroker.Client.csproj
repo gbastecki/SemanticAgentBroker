@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SemanticAgentBroker.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.12" />
+    <PackageReference Include="Markdig" Version="1.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticAgentBroker.Shared\SemanticAgentBroker.Shared.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyDocumentationFiles" BeforeTargets="BeforeBuild;AssignTargetPaths">
+    <ItemGroup>
+      <_DocumentationSourceFiles Include="$(MSBuildProjectDirectory)\..\..\DOCUMENTATION.md;$(MSBuildProjectDirectory)\..\..\LICENSE;$(MSBuildProjectDirectory)\..\..\NOTICE;$(MSBuildProjectDirectory)\..\..\README.md" />
+      <_ScreenshotSourceFiles Include="$(MSBuildProjectDirectory)\..\..\screenshots\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_DocumentationSourceFiles)" DestinationFolder="$(MSBuildProjectDirectory)\wwwroot\docs" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ScreenshotSourceFiles)" DestinationFolder="$(MSBuildProjectDirectory)\wwwroot\screenshots" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

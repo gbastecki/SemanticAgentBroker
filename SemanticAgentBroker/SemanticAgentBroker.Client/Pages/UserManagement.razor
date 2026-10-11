@@ -1,0 +1,586 @@
+@page "/users"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject SemanticAgentBroker.Client.Features.Shared.InteropService InteropService
+
+<div class="users-container">
+    <div class="header-section flex-wrap">
+        <h2>User Management</h2>
+        <div class="btn-group d-flex align-items-center gap-2 flex-wrap">
+            <div class="position-relative d-inline-flex align-items-center">
+                <input @bind="userSearchTerm" @bind:event="oninput" type="text" class="form-control search-input-user" placeholder="Search users by name..." />
+                @if (!string.IsNullOrEmpty(userSearchTerm))
+                {
+                    <span class="material-symbols-outlined search-clear-icon" @onclick='() => userSearchTerm = ""'>close</span>
+                }
+            </div>
+            <button class="btn-primary " @onclick="OpenCreateModal">
+                <span class="material-symbols-outlined">person_add</span> Add User
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">Loading users...</div>
+    }
+    else if (users.Count == 0)
+    {
+        <div class="empty-state">No users found.</div>
+    }
+    else
+    {
+        <div class="users-grid">
+            @foreach (var user in FilteredUsers)
+            {
+                <div class="user-card">
+                    <div class="user-header">
+                        <div class="user-info">
+                            <span class="material-symbols-outlined avatar">account_circle</span>
+                            <div>
+                                <h3>@user.Username</h3>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="badge @user.Role.ToLower()">@user.Role</span>
+                                    @foreach (var groupId in user.GroupIds)
+                                    {
+                                        var groupName = availableGroups.FirstOrDefault(g => g.Id == groupId)?.Name ?? "Unknown Group";
+                                        <span class="badge group">@groupName</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="icon-btn" @onclick="() => EditUser(user)" title="Edit User">
+                                <span class="material-symbols-outlined">edit</span>
+                            </button>
+                            <button class="icon-btn delete" @onclick="() => DeleteUser(user)" disabled="@(user.Username.ToLower() == "admin")" title="Delete User">
+                                <span class="material-symbols-outlined">delete</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="user-permissions">
+                        @if (user.Role == "Admin")
+                        {
+                            <div class="perm-admin-notice">
+                                <span class="material-symbols-outlined">verified_user</span>
+                                <span>Admins have full access to all plugins and tasks</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="user-permissions-header">
+                                <h4>Task Permissions</h4>
+                                <span class="perm-count-badge">@user.Permissions.Count @(user.Permissions.Count == 1 ? "rule" : "rules")</span>
+                            </div>
+                            @if (user.Permissions.Count == 0)
+                            {
+                                <div class="perm-empty">
+                                    <span class="material-symbols-outlined">lock_open</span>
+                                    <span>No task permissions assigned</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="perm-list-wrapper">
+                                    <ul class="perm-list">
+                                        @foreach (var p in user.Permissions)
+                                        {
+                                            <li class="perm-item">
+                                                <div class="perm-header">
+                                                    <div class="perm-path">
+                                                        <span class="perm-plugin-badge" title="Plugin: @GetPluginName(p.PluginId)">
+                                                            <span class="material-symbols-outlined">extension</span>
+                                                            <span class="perm-plugin-name">@GetPluginName(p.PluginId)</span>
+                                                        </span>
+                                                        <span class="material-symbols-outlined perm-separator">chevron_right</span>
+                                                        @if (p.PluginTaskId == "*")
+                                                        {
+                                                            <span class="perm-task-badge perm-all-tasks" title="All Tasks">
+                                                                <span class="material-symbols-outlined">all_inclusive</span>
+                                                                <span>All Tasks</span>
+                                                            </span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="perm-task-badge" title="Task: @GetTaskName(p.PluginId, p.PluginTaskId)">
+                                                                <span class="material-symbols-outlined">task_alt</span>
+                                                                <span>@GetTaskName(p.PluginId, p.PluginTaskId)</span>
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                @if (p.AllowedOptions != null && p.AllowedOptions.Count > 0)
+                                                {
+                                                    <div class="perm-options-container">
+                                                        @foreach (var opt in p.AllowedOptions)
+                                                        {
+                                                            <span class="perm-opt-chip @GetOptionChipClass(opt)" title="@FormatOptionName(opt)">
+                                                                <span class="material-symbols-outlined">@GetOptionIcon(opt)</span>
+                                                                <span>@FormatOptionName(opt)</span>
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (showModal)
+{
+    <div class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>@(editingUser == null ? "Create New User" : "Edit User")</h3>
+                <button class="close-btn" @onclick="CloseModal"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="modal-body @(modalModel.Role == "User" ? "two-panel" : "single-panel")">
+                <div class="left-column">
+                    <div class="user-details-panel">
+                        <div class="form-group">
+                            <label>Username</label>
+                            <input type="text" @bind="modalModel.Username" disabled="@(editingUser != null)" class="form-control" />
+                        </div>
+
+                        <div class="form-group">
+                            <label>@(editingUser == null ? "Password" : "New Password (Optional)")</label>
+                            <input type="password" @bind="modalModel.Password" class="form-control" />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Role</label>
+                            <select @bind="modalModel.Role" class="form-control">
+                                <option value="User">User</option>
+                                <option value="Admin">Admin</option>
+                            </select>
+                        </div>
+                    </div>
+                    @if (modalModel.Role == "User")
+                    {
+                        <div class="groups-panel ">
+                            <h4>Assigned Groups</h4>
+                            <div class=" groups-grid">
+                                @foreach (var group in availableGroups)
+                                {
+                                    <label class="checkbox-label group-checkbox">
+                                        <input type="checkbox" checked="@modalModel.GroupIds.Contains(group.Id)" @onchange="@(e => ToggleGroup(group.Id, (bool)e.Value!))" />
+                                        <span>
+                                            <strong>@group.Name</strong>
+                                            <span class="group-desc">@group.Description</span>
+                                        </span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (modalModel.Role == "User")
+                {
+                    <div class="permissions-panel">
+                        <div class="flex-between">
+                            <div>
+                                <h4>Task Permissions</h4>
+                                <p class="perm-panel-subtitle">Configure plugin access and execution permissions</p>
+                            </div>
+                            <button class="btn-sm" @onclick="AddPermissionRow">
+                                <span class="material-symbols-outlined">add</span> Add Permission
+                            </button>
+                        </div>
+
+                        <div class="permissions-list">
+                            @if (modalModel.Permissions.Count == 0)
+                            {
+                                <div class="perm-empty modal-empty">
+                                    <span class="material-symbols-outlined">shield</span>
+                                    <div>
+                                        <strong>No permission rules added</strong>
+                                        <p>Click "Add Permission" to grant access to plugins and tasks.</p>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var perm in modalModel.Permissions)
+                                {
+                                    <div class="perm-row">
+                                        <div class="perm-row-header">
+                                            <div class="perm-selectors-grid">
+                                                <div class="selector-field">
+                                                    <label class="field-label">Plugin</label>
+                                                    <SearchableSelect TValue="string"
+                                                                      Options="@(availablePlugins.Select(p => new SelectOptionItem<string>(p.Id, p.DisplayName)))"
+                                                                      Value="@perm.PluginId"
+                                                                      OnSelected="@(val => OnPluginChanged(perm, val ?? ""))"
+                                                                      Placeholder="-- Select Plugin --" />
+                                                </div>
+
+                                                <div class="selector-field">
+                                                    <label class="field-label">Task Scope</label>
+                                                    <SearchableSelect TValue="string"
+                                                                      Options="@(GetTasksForPlugin(perm.PluginId).Select(t => new SelectOptionItem<string>(t.Id, t.Name)).Prepend(new SelectOptionItem<string>("*", "-- All Tasks --")))"
+                                                                      @bind-Value="@perm.PluginTaskId"
+                                                                      Disabled="@(string.IsNullOrEmpty(perm.PluginId))"
+                                                                      Placeholder="-- Select Task --" />
+                                                </div>
+
+                                                <button class="icon-btn delete-sm" @onclick="() => modalModel.Permissions.Remove(perm)" title="Remove Permission Rule">
+                                                    <span class="material-symbols-outlined">close</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="perm-options-wrapper">
+                                            <span class="perm-options-label">Allowed Capabilities:</span>
+                                            <div class="perm-options">
+                                                <label class="checkbox-label @(perm.AllowedOptions.Contains("AutoExecution") ? "active opt-auto" : "")">
+                                                    <input type="checkbox" checked="@perm.AllowedOptions.Contains("AutoExecution")" @onchange="@(e => ToggleOption(perm, "AutoExecution", (bool)e.Value!))" />
+                                                    <span class="material-symbols-outlined chip-icon">bolt</span>
+                                                    <span>Auto-Execute</span>
+                                                </label>
+                                                <label class="checkbox-label @(perm.AllowedOptions.Contains("UploadFiles") ? "active opt-upload" : "")">
+                                                    <input type="checkbox" checked="@perm.AllowedOptions.Contains("UploadFiles")" @onchange="@(e => ToggleOption(perm, "UploadFiles", (bool)e.Value!))" />
+                                                    <span class="material-symbols-outlined chip-icon">upload_file</span>
+                                                    <span>Upload Files</span>
+                                                </label>
+                                                <label class="checkbox-label @(perm.AllowedOptions.Contains("EditFiles") ? "active opt-edit" : "")">
+                                                    <input type="checkbox" checked="@perm.AllowedOptions.Contains("EditFiles")" @onchange="@(e => ToggleOption(perm, "EditFiles", (bool)e.Value!))" />
+                                                    <span class="material-symbols-outlined chip-icon">edit_note</span>
+                                                    <span>Edit Files</span>
+                                                </label>
+                                                <label class="checkbox-label @(perm.AllowedOptions.Contains("ConsoleView") ? "active opt-console" : "")">
+                                                    <input type="checkbox" checked="@perm.AllowedOptions.Contains("ConsoleView")" @onchange="@(e => ToggleOption(perm, "ConsoleView", (bool)e.Value!))" />
+                                                    <span class="material-symbols-outlined chip-icon">terminal</span>
+                                                    <span>Console View</span>
+                                                </label>
+                                                <label class="checkbox-label @(perm.AllowedOptions.Contains("DebugMode") ? "active opt-debug" : "")">
+                                                    <input type="checkbox" checked="@perm.AllowedOptions.Contains("DebugMode")" @onchange="@(e => ToggleOption(perm, "DebugMode", (bool)e.Value!))" />
+                                                    <span class="material-symbols-outlined chip-icon">bug_report</span>
+                                                    <span>Debug Mode</span>
+                                                </label>
+                                                <label class="checkbox-label @(perm.AllowedOptions.Contains("TraceMode") ? "active opt-trace" : "")">
+                                                    <input type="checkbox" checked="@perm.AllowedOptions.Contains("TraceMode")" @onchange="@(e => ToggleOption(perm, "TraceMode", (bool)e.Value!))" />
+                                                    <span class="material-symbols-outlined chip-icon">timeline</span>
+                                                    <span>Trace Mode</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn-primary" @onclick="SaveUser">Save Changes</button>
+            </div>
+        </div>
+    </div>
+}
+
+
+
+@code {
+    private bool isLoading = true;
+    private List<UserDto> users = new();
+    private List<PluginDto> availablePlugins = new();
+    private List<GroupDto> availableGroups = new();
+
+    private bool showModal = false;
+    private UserDto? editingUser = null;
+    private UserFormModel modalModel = new();
+
+    private string userSearchTerm = "";
+    private IEnumerable<UserDto> FilteredUsers => string.IsNullOrWhiteSpace(userSearchTerm)
+        ? users
+        : users.Where(u => u.Username.Contains(userSearchTerm, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+        await LoadPlugins();
+        await LoadGroups();
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoading = true;
+        try
+        {
+            var result = await Http.GetFromJsonAsync<List<UserDto>>("/api/users");
+            if (result != null) users = result;
+        }
+        catch { /* Handle error */ }
+        finally { isLoading = false; }
+    }
+
+    private async Task LoadPlugins()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<List<PluginDto>>("/api/plugins");
+            if (result != null) availablePlugins = result;
+        }
+        catch { }
+    }
+
+    private async Task LoadGroups()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<List<GroupDto>>("/api/groups");
+            if (result != null) availableGroups = result;
+        }
+        catch { }
+    }
+
+    private void OpenCreateModal()
+    {
+        editingUser = null;
+        modalModel = new UserFormModel();
+        showModal = true;
+    }
+
+    private void EditUser(UserDto user)
+    {
+        editingUser = user;
+        modalModel = new UserFormModel
+        {
+            Username = user.Username,
+            Role = user.Role,
+            Permissions = user.Permissions.Select(p => new PermissionFormModel
+            {
+                PluginId = p.PluginId,
+                PluginTaskId = p.PluginTaskId,
+                AllowedOptions = new List<string>(p.AllowedOptions)
+            }).ToList(),
+            GroupIds = new List<Guid>(user.GroupIds)
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private async Task SaveUser()
+    {
+        try
+        {
+            foreach (var perm in modalModel.Permissions)
+            {
+                if (string.IsNullOrWhiteSpace(perm.PluginTaskId)) perm.PluginTaskId = "*";
+            }
+
+            if (editingUser == null)
+            {
+                // Create
+                await Http.PostAsJsonAsync("/api/users", modalModel);
+            }
+            else
+            {
+                // Update
+                var updateReq = new
+                {
+                    Password = string.IsNullOrEmpty(modalModel.Password) ? null : modalModel.Password,
+                    Role = modalModel.Role,
+                    Permissions = modalModel.Permissions,
+                    GroupIds = modalModel.GroupIds
+                };
+                await Http.PutAsJsonAsync($"/api/users/{editingUser.Id}", updateReq);
+            }
+            showModal = false;
+            await LoadUsers();
+        }
+        catch { }
+    }
+
+    private async Task DeleteUser(UserDto user)
+    {
+        var confirmed = await InteropService.ConfirmAsync($"Are you sure you want to delete user '{user.Username}'?");
+        if (!confirmed) return;
+
+        try
+        {
+            await Http.DeleteAsync($"/api/users/{user.Id}");
+            await LoadUsers();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting user: {ex.Message}");
+        }
+    }
+
+    private void AddPermissionRow()
+    {
+        modalModel.Permissions.Add(new PermissionFormModel());
+    }
+
+    private void OnPluginChanged(PermissionFormModel perm, string pluginId)
+    {
+        perm.PluginId = pluginId;
+        perm.PluginTaskId = "*"; // Default to All Tasks
+    }
+
+    private List<PluginTaskDefDto> GetTasksForPlugin(string pluginId)
+    {
+        var plugin = availablePlugins.FirstOrDefault(p => p.Id == pluginId);
+        if (plugin != null && !string.IsNullOrEmpty(plugin.TasksJson))
+        {
+            try
+            {
+                var tasks = System.Text.Json.JsonSerializer.Deserialize<List<PluginTaskDefDto>>(plugin.TasksJson);
+                return tasks ?? new List<PluginTaskDefDto>();
+            }
+            catch { }
+        }
+        return new List<PluginTaskDefDto>();
+    }
+
+    private string GetPluginName(string pluginId)
+    {
+        var plugin = availablePlugins.FirstOrDefault(p => p.Id == pluginId);
+        return plugin?.DisplayName ?? pluginId;
+    }
+
+    private string GetTaskName(string pluginId, string taskId)
+    {
+        if (taskId == "*") return "All Tasks";
+        var tasks = GetTasksForPlugin(pluginId);
+        var task = tasks.FirstOrDefault(t => t.Id == taskId);
+        return task?.Name ?? taskId;
+    }
+
+    private void ToggleOption(PermissionFormModel perm, string option, bool isChecked)
+    {
+        if (isChecked && !perm.AllowedOptions.Contains(option))
+        {
+            perm.AllowedOptions.Add(option);
+        }
+        else if (!isChecked && perm.AllowedOptions.Contains(option))
+        {
+            perm.AllowedOptions.Remove(option);
+        }
+    }
+
+    private void ToggleGroup(Guid groupId, bool isChecked)
+    {
+        if (isChecked && !modalModel.GroupIds.Contains(groupId))
+        {
+            modalModel.GroupIds.Add(groupId);
+        }
+        else if (!isChecked && modalModel.GroupIds.Contains(groupId))
+        {
+            modalModel.GroupIds.Remove(groupId);
+        }
+    }
+
+    private string FormatOptionName(string opt)
+    {
+        return opt switch
+        {
+            "AutoExecution" => "Auto-Execute",
+            "UploadFiles" => "Upload Files",
+            "EditFiles" => "Edit Files",
+            "ConsoleView" => "Console View",
+            "DebugMode" => "Debug Mode",
+            "TraceMode" => "Trace Mode",
+            _ => opt
+        };
+    }
+
+    private string GetOptionIcon(string opt)
+    {
+        return opt switch
+        {
+            "AutoExecution" => "bolt",
+            "UploadFiles" => "upload_file",
+            "EditFiles" => "edit_note",
+            "ConsoleView" => "terminal",
+            "DebugMode" => "bug_report",
+            "TraceMode" => "timeline",
+            _ => "check_circle"
+        };
+    }
+
+    private string GetOptionChipClass(string opt)
+    {
+        return opt switch
+        {
+            "AutoExecution" => "opt-auto",
+            "UploadFiles" => "opt-upload",
+            "EditFiles" => "opt-edit",
+            "ConsoleView" => "opt-console",
+            "DebugMode" => "opt-debug",
+            "TraceMode" => "opt-trace",
+            _ => "opt-default"
+        };
+    }
+
+    // Models
+    public class UserDto
+    {
+        public Guid Id { get; set; }
+        public string Username { get; set; } = "";
+        public string Role { get; set; } = "";
+        public List<PermissionDto> Permissions { get; set; } = new();
+        public List<Guid> GroupIds { get; set; } = new();
+    }
+
+    public class PermissionDto
+    {
+        public string PluginId { get; set; } = "";
+        public string PluginTaskId { get; set; } = "";
+        public List<string> AllowedOptions { get; set; } = new();
+    }
+
+    public class UserFormModel
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string Role { get; set; } = "User";
+        public List<PermissionFormModel> Permissions { get; set; } = new();
+        public List<Guid> GroupIds { get; set; } = new();
+    }
+
+    public class PermissionFormModel
+    {
+        public string PluginId { get; set; } = "";
+        public string PluginTaskId { get; set; } = "";
+        public List<string> AllowedOptions { get; set; } = new();
+    }
+
+    public class PluginDto
+    {
+        public string Id { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string TasksJson { get; set; } = "";
+    }
+
+    public class PluginTaskDefDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+    }
+
+    public class GroupDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+    }
+}

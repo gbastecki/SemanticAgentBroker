@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>SemanticAgentBroker.Core</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Grzegorz Bastecki</Authors>
+    <Description>Universal ReAct agent execution framework built on Microsoft Semantic Kernel. Provides agent registry, load-balanced multi-provider LLM routing, context compaction, Python sandbox integration, and a structured ReAct reasoning loop.</Description>
+    <PackageTags>semantic-kernel;agent;react;llm;ai;load-balancer</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.81.0" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="3.0.0-preview.26160.2" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.81.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticAgentBroker.Shared\SemanticAgentBroker.Shared.csproj" />
+    <ProjectReference Include="..\SemanticAgentBroker.Sdk\SemanticAgentBroker.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SemanticAgentBroker.UnitTests" />
+  </ItemGroup>
+
+</Project>

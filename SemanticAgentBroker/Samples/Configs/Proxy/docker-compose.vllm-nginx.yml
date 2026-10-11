@@ -1,0 +1,71 @@
+# ==============================================================================
+# Docker Compose: vLLM Inference Engine Fronted by Nginx Basic Auth Proxy
+# ==============================================================================
+# Architecture:
+#   [ Host / SemanticAgentBroker ]
+#                 │  (HTTP Basic Auth: agent_user / SecretAgentPassword123!)
+#                 ▼  Port 8080
+#          ┌──────────────┐
+#          │    Nginx     │  (Verifies .htpasswd, disables buffering)
+#          └──────┬───────┘
+#                 │  Internal Docker Network: vllm_net
+#                 ▼  Port 8000 (Not exposed to host)
+#          ┌──────────────┐
+#          │     vLLM     │  (GPU-accelerated OpenAI-compatible API)
+#          └──────────────┘
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Nginx Reverse Proxy with Basic Authentication
+  # ----------------------------------------------------------------------------
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: vllm-nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx-vllm-basic-auth.conf:/etc/nginx/nginx.conf:ro
+      - ./.htpasswd.example:/etc/nginx/.htpasswd:ro
+    depends_on:
+      - vllm
+    networks:
+      - vllm_net
+
+  # ----------------------------------------------------------------------------
+  # 2. vLLM Inference Engine
+  # ----------------------------------------------------------------------------
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-inference
+    restart: unless-stopped
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    # Mount local models cache directory to avoid re-downloading weights
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    # Command arguments for vLLM: Replace model name as needed
+    command: >
+      --model Qwen/Qwen3.8-27B
+      --host 0.0.0.0
+      --port 8000
+      --max-model-len 32768
+      --trust-remote-code
+      --gpu-memory-utilization 0.90
+    # Enable NVIDIA GPU access (Uncomment when running on NVIDIA host)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    networks:
+      - vllm_net
+
+networks:
+  vllm_net:
+    driver: bridge

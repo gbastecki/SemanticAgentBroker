@@ -1,0 +1,77 @@
+.plugin-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.75rem 0;
+}
+
+.plugin-tag {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--plugin-tag-bg);
+    color: var(--plugin-tag-color);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+    .plugin-tag.method-count {
+        background: rgba(8, 145, 178, 0.08);
+        color: var(--accent-cyan);
+    }
+
+.stat-card.clickable {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+    .stat-card.clickable:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+
+.file-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    border: 2px dashed var(--border-glass);
+    border-radius: var(--radius-md);
+    background: rgba(79, 70, 229, 0.02);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+    .file-drop-zone:hover {
+        border-color: var(--accent-indigo);
+        background: rgba(79, 70, 229, 0.06);
+    }
+
+.task-box {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+    .task-box:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+
+.search-input-user {
+    width: 350px;
+    max-width: 100%;
+    padding-right: 30px;
+    border: 1px solid var(--accent-indigo);
+}
+
+.search-clear-icon {
+    position: absolute;
+    right: 8px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+}

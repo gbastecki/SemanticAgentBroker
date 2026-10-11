@@ -1,0 +1,4 @@
+services:
+  sandbox-build:
+    build: .
+    image: ai-sandbox-python:latest

@@ -1,0 +1,291 @@
+@page "/plugins"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@implements IAsyncDisposable
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Plugins - Semantic Agent Broker</PageTitle>
+
+<div class="section-header">
+    <h1 class="section-title">Plugin Management</h1>
+    <div class="btn-group d-flex align-items-center gap-2 flex-wrap">
+        <div class="position-relative d-inline-flex align-items-center">
+            <input @bind="pluginSearchTerm" @bind:event="oninput" type="text" class="form-control search-input" placeholder="Quick filter plugins..." />
+            @if (!string.IsNullOrEmpty(pluginSearchTerm))
+            {
+                <span class="material-symbols-outlined search-clear-icon" @onclick='() => pluginSearchTerm = ""'>close</span>
+            }
+        </div>
+        <button class="btn btn-secondary" @onclick="RescanPlugins" disabled="@isRescanning">
+            <span class="material-symbols-outlined @(isRescanning ? "spin-icon" : "")">refresh</span> Rescan
+        </button>
+    </div>
+</div>
+<p class="section-subtitle">Discover, enable, disable, and configure plugins. Each plugin provides tools that agents can use during task execution.</p>
+
+@if (plugins == null)
+{
+    <div class="glass-card">
+        <p class="card-desc">Loading plugins...</p>
+    </div>
+}
+else if (plugins.Count == 0)
+{
+    <div class="glass-card">
+        <p class="card-desc">No plugins found. Place plugin DLLs in subdirectories under the Plugins directory.</p>
+    </div>
+}
+else
+{
+    var requiredPlugins = FilteredPlugins(plugins.Where(p => p.Category == "BuiltInRequired")).ToList();
+    var optionalPlugins = FilteredPlugins(plugins.Where(p => p.Category == "BuiltInOptional")).ToList();
+    var customPlugins = FilteredPlugins(plugins.Where(p => p.Category == "Custom")).ToList();
+
+    @* -- Built-in Required ----------------------------------------------- *@
+    @if (requiredPlugins.Count > 0)
+    {
+        <div class="plugin-section">
+            <div class="plugin-section-header">
+                <span class="material-symbols-outlined section-icon required-icon">lock</span>
+                <h2 class="plugin-section-title">Built-in Required</h2>
+                <span class="plugin-section-count">@requiredPlugins.Count</span>
+            </div>
+            <p class="plugin-section-desc">Core system plugins. Always enabled and cannot be disabled.</p>
+            <div class="plugin-grid">
+                @foreach (var p in requiredPlugins)
+                {
+                    @RenderPluginCard(p)
+                }
+            </div>
+        </div>
+    }
+
+    @* -- Built-in Optional ----------------------------------------------- *@
+    @if (optionalPlugins.Count > 0)
+    {
+        <div class="plugin-section">
+            <div class="plugin-section-header">
+                <span class="material-symbols-outlined section-icon optional-icon">inventory_2</span>
+                <h2 class="plugin-section-title">Built-in Optional</h2>
+                <span class="plugin-section-count">@optionalPlugins.Count</span>
+            </div>
+            <p class="plugin-section-desc">Optional plugins shipped with the framework. Disabled by default - enable as needed.</p>
+            <div class="plugin-grid">
+                @foreach (var p in optionalPlugins)
+                {
+                    @RenderPluginCard(p)
+                }
+            </div>
+        </div>
+    }
+
+    @* -- Custom Plugins -------------------------------------------------- *@
+    @if (customPlugins.Count > 0)
+    {
+        <div class="plugin-section">
+            <div class="plugin-section-header">
+                <span class="material-symbols-outlined section-icon custom-icon">extension</span>
+                <h2 class="plugin-section-title">Custom Plugins</h2>
+                <span class="plugin-section-count">@customPlugins.Count</span>
+            </div>
+            <p class="plugin-section-desc">External plugins from the Plugins directory. Disabled by default - enable to load, disable to safely remove files.</p>
+            <div class="plugin-grid">
+                @foreach (var p in customPlugins)
+                {
+                    @RenderPluginCard(p)
+                }
+            </div>
+        </div>
+    }
+}
+
+@* -- Shared Plugin Card Render Fragment ------------------------------- *@
+
+@{
+    RenderFragment RenderPluginCard(PluginInfo p) => __builder =>
+    {
+        <div class="glass-card plugin-card @GetPluginCardClass(p)" id="plugin-@p.Id">
+            <div class="card-header">
+                <div class="card-icon @GetPluginIconClass(p)">
+                    <span class="material-symbols-outlined">@(p.Icon ?? "extension")</span>
+                </div>
+                <div class="card-title-container">
+                    <h3 class="card-title mb-0">@p.DisplayName</h3>
+                    <span class="plugin-version">v@(p.Version) - @(p.Author)</span>
+                </div>
+                <div class="plugin-badges">
+                    <span class="plugin-category-badge @GetCategoryBadgeClass(p.Category)">@GetCategoryLabel(p.Category)</span>
+                    <div class="plugin-state-badge @p.LoadState.ToLowerInvariant()">@GetLoadStateLabel(p.LoadState)</div>
+                </div>
+            </div>
+            <p class="card-desc mb-1">@p.Description</p>
+            <div class="plugin-dll-path">
+                <span class="material-symbols-outlined">folder_open</span> Path: @p.DllFileName
+            </div>
+
+            @if (p.Tags != null && p.Tags.Count > 0)
+            {
+                <div class="plugin-tags">
+                    @foreach (var tag in p.Tags)
+                    {
+                        <span class="plugin-tag">@tag</span>
+                    }
+                </div>
+            }
+
+            @{
+                var requiredBuiltInIds = plugins?.Where(x => x.Category == "BuiltInRequired").Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>();
+                var nonRequiredDeps = p.RequiredPlugins?.Where(r => !requiredBuiltInIds.Contains(r)).ToList() ?? new();
+            }
+            @if (nonRequiredDeps.Count > 0)
+            {
+                <div class="plugin-dependencies">
+                    <span class="dependency-label">Requires:</span>
+                    @foreach (var req in nonRequiredDeps)
+                    {
+                        <span class="plugin-dependency-badge">@req</span>
+                    }
+                </div>
+            }
+
+            @* -- Missing plugin warning banner ------------------- *@
+            @if (p.IsEnabled && p.LoadState == "NotLoaded")
+            {
+                <div class="plugin-missing-warning">
+                    <span class="material-symbols-outlined">warning</span>
+                    <span>Plugin is enabled but DLL was not found on disk. Check the Plugins directory.</span>
+                </div>
+            }
+
+            <div class="plugin-actions-row">
+                <div class="plugin-status-group">
+                    @if (p.Category == "BuiltInRequired")
+                    {
+                        <span class="plugin-badge required">
+                            <span class="material-symbols-outlined plugin-required-icon">lock</span> REQUIRED
+                        </span>
+                        <span class="plugin-status enabled">
+                            <span class="material-symbols-outlined plugin-verified-icon">verified</span>
+                            Always Enabled
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="plugin-status @(p.IsEnabled ? "enabled" : "disabled")">
+                            <span class="material-symbols-outlined plugin-verified-icon">
+                                @(p.IsEnabled ? "check_circle" : "cancel")
+                            </span>
+                            @(p.IsEnabled ? "Enabled" : "Disabled")
+                        </span>
+                    }
+                </div>
+                <div class="plugin-action-buttons">
+                    @if (p.Category != "BuiltInRequired")
+                    {
+                        @if (p.IsEnabled && p.LoadState == "Loaded")
+                        {
+                            <button class="btn-sm btn-outline" @onclick="() => ReloadPlugin(p.Id)" title="Reload">
+                                <span class="material-symbols-outlined">refresh</span>
+                            </button>
+                        }
+                        <button class="btn-sm @(p.IsEnabled ? "btn-danger-outline" : "btn-success-outline")"
+                                @onclick="() => TogglePlugin(p.Id)"
+                                title="@(p.IsEnabled ? "Disable" : "Enable")">
+                            <span class="material-symbols-outlined">@(p.IsEnabled ? "toggle_off" : "toggle_on")</span>
+                            @(p.IsEnabled ? "Disable" : "Enable")
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(p.LastError))
+            {
+                <div class="plugin-error">
+                    <span class="material-symbols-outlined plugin-verified-icon">warning</span>
+                    @p.LastError
+                </div>
+            }
+
+            <button class="btn-expand @(expandedPlugin == p.Id ? "mb-2" : "mb-0")" @onclick="() => ToggleExpand(p.Id)">
+                <span class="material-symbols-outlined">@(expandedPlugin == p.Id ? "expand_less" : "expand_more")</span>
+                @(expandedPlugin == p.Id ? "Hide Methods" : "Show Methods")
+            </button>
+
+            @* Expandable method manifest *@
+            @if (expandedPlugin == p.Id)
+            {
+                <div class="method-manifest manifest-container">
+                    <h4 class="manifest-title">Available Methods</h4>
+                    @if (p.Methods != null && p.Methods.Count > 0)
+                    {
+                        @foreach (var method in p.Methods)
+                        {
+                            <div class="method-card">
+                                <div class="method-header">
+                                    <span class="method-name">@method.DisplayName</span>
+                                    @if (method.IsDangerous)
+                                    {
+                                        <span class="danger-badge">&#x26A0;&#xFE0F; Dangerous</span>
+                                    }
+                                </div>
+                                <p class="method-desc">@method.Description</p>
+                                @if (method.Parameters != null && method.Parameters.Count > 0)
+                                {
+                                    <div class="method-params">
+                                        @foreach (var param in method.Parameters)
+                                        {
+                                            <div class="param-row">
+                                                <span class="param-name">@param.Name</span>
+                                                <span class="param-type">@param.Type</span>
+                                                @if (param.IsRequired)
+                                                {
+                                                    <span class="param-required">required</span>
+                                                }
+                                                <span class="param-desc">@param.Description</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(method.ReturnDescription))
+                                {
+                                    <div class="method-return">
+                                        <span class="return-label">Returns:</span> @method.ReturnDescription
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="card-desc">No methods exposed by this plugin.</p>
+                    }
+
+                    @if (p.PluginTasks != null && p.PluginTasks.Count > 0)
+                    {
+                        <h4 class="manifest-title manifest-tasks-header">Exported Task Templates</h4>
+                        <div class="">
+                            @foreach (var task in p.PluginTasks)
+                            {
+                                <div class="task-card">
+                                    <div class="task-header justify-content-between">
+                                        <div class="task-header-container">
+                                            <span class="material-symbols-outlined task-header-icon">integration_instructions</span>
+                                            <span class="task-name">@task.Name</span>
+                                        </div>
+                                        <button class="btn-sm @(task.IsEnabled ? "btn-danger-outline" : "btn-success-outline")"
+                                            @onclick="() => ToggleTask(p.Id, task.Id)"
+                                            title="@(task.IsEnabled ? "Disable Task" : "Enable Task")">
+                                            <span class="material-symbols-outlined">@(task.IsEnabled ? "toggle_off" : "toggle_on")</span>
+                                            @(task.IsEnabled ? "Disable" : "Enable")
+                                        </button>
+                                    </div>
+                                    <p class="task-desc">@task.Description</p>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    };
+}

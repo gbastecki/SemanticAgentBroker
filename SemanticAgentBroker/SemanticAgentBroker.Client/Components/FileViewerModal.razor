@@ -1,0 +1,293 @@
+@namespace SemanticAgentBroker.Client.Components
+@inject HttpClient Http
+@inject SemanticAgentBroker.Client.Features.Markdown.IMarkdownService Markdown
+@inject SemanticAgentBroker.Client.Features.Shared.InteropService InteropService
+@implements IDisposable
+
+<div class="modal-backdrop" @onclick="HandleClose">
+    <div class="modal-content file-viewer-modal" @onclick:stopPropagation>
+        <div class="file-viewer-header">
+            <h3 class="m-0 text-md">@FileName</h3>
+            <div class="file-viewer-tabs">
+                @if (isTextFile)
+                {
+                    @if (IsMarkdown)
+                    {
+                        <button class="tab-btn @(fileViewMode == "preview" ? "active" : "")" @onclick='() => SetFileViewMode("preview")' disabled="@(isLoading || isTabLoading)">
+                            <span class="material-symbols-outlined text-sm">visibility</span> Preview
+                        </button>
+                        <button class="tab-btn @(fileViewMode == "source" ? "active" : "")" @onclick='() => SetFileViewMode("source")' disabled="@(isLoading || isTabLoading)">
+                            <span class="material-symbols-outlined text-sm">code</span> Source
+                        </button>
+                    }
+                    @if (CanEdit)
+                    {
+                        <button class="tab-btn @(fileViewMode == "edit" ? "active" : "")" @onclick='() => SetFileViewMode("edit")' disabled="@(isLoading || isTabLoading)">
+                            <span class="material-symbols-outlined text-sm">edit</span> Edit
+                        </button>
+                    }
+                }
+            </div>
+            <button class="btn-icon" @onclick="HandleClose" title="Close viewer">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+
+        @if (isLoading || isTabLoading)
+        {
+            <div class="empty-state p-4">
+                <div class="activity-dots"><span></span><span></span><span></span></div>
+                <div class="mt-2">Loading and rendering preview...</div>
+                <button class="btn btn-secondary btn-sm mt-3" @onclick="HandleClose">
+                    <span class="material-symbols-outlined text-sm">close</span> Cancel
+                </button>
+            </div>
+        }
+        else if (fileViewMode == "edit")
+        {
+            <textarea class="file-editor-textarea" @bind="editingContent"></textarea>
+            <div class="file-editor-footer">
+                <div class="file-editor-actions">
+                    <button class="btn btn-sm btn-primary" @onclick="SaveContentAsync" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="activity-dots d-inline-flex"><span></span><span></span><span></span></span>
+                            <text>Saving...</text>
+                        }
+                        else
+                        {
+                            <span class="material-symbols-outlined text-sm">save</span>
+                            <text>Save</text>
+                        }
+                    </button>
+                    <button class="btn btn-sm btn-secondary" @onclick='() => SetFileViewMode(IsMarkdown ? "preview" : "source")'>
+                        Cancel
+                    </button>
+                </div>
+                @if (saveSuccess)
+                {
+                    <span class="file-save-status success">
+                        <span class="material-symbols-outlined text-sm">check_circle</span> Saved
+                    </span>
+                }
+                else if (saveError != null)
+                {
+                    <span class="file-save-status error">
+                        <span class="material-symbols-outlined text-sm">error</span> @saveError
+                    </span>
+                }
+            </div>
+        }
+        else if (fileViewMode == "preview" && IsMarkdown)
+        {
+            <div @ref="previewContainerRef" class="file-viewer-content md-content md-preview-container">
+            </div>
+        }
+        else
+        {
+            <pre class="file-viewer-content">@rawContent</pre>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid TaskId { get; set; }
+    [Parameter] public string FileName { get; set; } = "";
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnFileSaved { get; set; }
+
+    private ElementReference previewContainerRef;
+    private string rawContent = "";
+    private string renderedHtml = "";
+    private string editingContent = "";
+    private string fileViewMode = "preview";
+    private bool isLoading = true;
+    private bool isTabLoading;
+    private bool isSaving;
+    private bool saveSuccess;
+    private string? saveError;
+    private bool isTextFile;
+    private string? _lastLoadedFileName;
+    private CancellationTokenSource? _loadCts;
+    private bool _needsHtmlInjection;
+
+    private bool IsMarkdown => FileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTextExtension(string fileName) =>
+        SemanticAgentBroker.Shared.Utilities.WorkspaceFileUtils.IsTextFile(fileName);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(FileName) && FileName != _lastLoadedFileName)
+        {
+            _lastLoadedFileName = FileName;
+            await LoadFileContentAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_needsHtmlInjection && !isLoading && !isTabLoading && fileViewMode == "preview" && IsMarkdown)
+        {
+            _needsHtmlInjection = false;
+            try
+            {
+                await InteropService.SetElementHtmlAsync(previewContainerRef, renderedHtml, attachCopy: true);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+            }
+        }
+    }
+
+    private async Task LoadFileContentAsync()
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        var ct = _loadCts.Token;
+
+        isLoading = true;
+        isTabLoading = false;
+        rawContent = "";
+        renderedHtml = "";
+        editingContent = "";
+        saveSuccess = false;
+        saveError = null;
+        isTextFile = IsTextExtension(FileName);
+        fileViewMode = IsMarkdown ? "preview" : "source";
+        _needsHtmlInjection = false;
+        StateHasChanged();
+
+        // Yield immediately to let Blazor render the loading modal and spinner frame before doing network/parsing work
+        await Task.Yield();
+
+        try
+        {
+            using var response = await Http.GetAsync($"api/tasks/{TaskId}/workspace/{Uri.EscapeDataString(FileName)}", ct);
+            response.EnsureSuccessStatusCode();
+            rawContent = await response.Content.ReadAsStringAsync(ct);
+
+            if (IsMarkdown)
+            {
+                renderedHtml = await Markdown.ToHtmlAsync(rawContent, ct);
+                _needsHtmlInjection = true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            rawContent = $"Error loading file: {ex.Message}";
+            renderedHtml = $"<p class=\"text-danger\">Error loading file: {System.Net.WebUtility.HtmlEncode(ex.Message)}</p>";
+            _needsHtmlInjection = true;
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task SetFileViewMode(string mode)
+    {
+        if (mode == fileViewMode) return;
+
+        if (mode == "edit")
+        {
+            editingContent = rawContent;
+            saveSuccess = false;
+            saveError = null;
+            fileViewMode = mode;
+            return;
+        }
+
+        if (mode == "preview" && IsMarkdown)
+        {
+            isTabLoading = true;
+            fileViewMode = mode;
+            StateHasChanged();
+
+            // Yield immediately to let the browser paint the loader frame
+            await Task.Yield();
+            await Task.Delay(1);
+
+            // If user edited content without saving, re-generate renderedHtml from editingContent
+            if (!string.IsNullOrEmpty(editingContent) && editingContent != rawContent)
+            {
+                renderedHtml = await Markdown.ToHtmlAsync(editingContent);
+            }
+            else if (string.IsNullOrEmpty(renderedHtml))
+            {
+                renderedHtml = await Markdown.ToHtmlAsync(rawContent);
+            }
+
+            _needsHtmlInjection = true;
+            isTabLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        fileViewMode = mode;
+    }
+
+    private async Task SaveContentAsync()
+    {
+        isSaving = true;
+        saveSuccess = false;
+        saveError = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Http.PutAsync(
+                $"api/tasks/{TaskId}/workspace/{Uri.EscapeDataString(FileName)}",
+                new StringContent(editingContent, System.Text.Encoding.UTF8, "text/plain"));
+
+            if (response.IsSuccessStatusCode)
+            {
+                rawContent = editingContent;
+                if (IsMarkdown)
+                {
+                    renderedHtml = await Markdown.ToHtmlAsync(rawContent);
+                    _needsHtmlInjection = true;
+                }
+                saveSuccess = true;
+                await OnFileSaved.InvokeAsync();
+            }
+            else
+            {
+                saveError = $"Save failed: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            saveError = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        _loadCts?.Cancel();
+        await OnClose.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
+    }
+}

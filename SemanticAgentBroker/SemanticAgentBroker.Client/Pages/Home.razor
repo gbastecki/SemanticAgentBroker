@@ -1,0 +1,228 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Microsoft.AspNetCore.Components.Forms
+@using SemanticAgentBroker.Client.Features.SignalR
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject ISignalRService SignalR
+@implements IAsyncDisposable
+
+<PageTitle>Dashboard - Semantic Agent Broker</PageTitle>
+
+<div class="section-header">
+    <h1 class="section-title">Dashboard</h1>
+</div>
+<p class="section-subtitle">Create and monitor intelligent agent tasks in real-time.</p>
+
+<!-- Stats -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-icon stat-icon-cyan">
+            <span class="material-symbols-outlined">sync</span>
+        </div>
+        <div>
+            <div class="stat-value">@activeCount</div>
+            <div class="stat-label">Active Tasks</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon stat-icon-emerald">
+            <span class="material-symbols-outlined">check_circle</span>
+        </div>
+        <div>
+            <div class="stat-value">@completedCount</div>
+            <div class="stat-label">Completed</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon stat-icon-rose">
+            <span class="material-symbols-outlined">cancel</span>
+        </div>
+        <div>
+            <div class="stat-value">@failedCount</div>
+            <div class="stat-label">Failed</div>
+        </div>
+    </div>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <div class="stat-card clickable" @onclick='() => Nav.NavigateTo("/plugins")' title="Manage Plugins">
+                <div class="stat-icon stat-icon-indigo">
+                    <span class="material-symbols-outlined">extension</span>
+                </div>
+                <div>
+                    <div class="stat-value">@pluginCount</div>
+                    <div class="stat-label">Plugins</div>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+<!-- Task Cards -->
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="text-md font-semibold m-0 text-secondary">Available Tasks</h2>
+    <div class="position-relative d-inline-flex align-items-center">
+        <input @bind="taskSearchTerm" @bind:event="oninput" type="text" class="form-control search-input-user" placeholder="Quick filter tasks..." />
+        @if (!string.IsNullOrEmpty(taskSearchTerm))
+        {
+            <span class="material-symbols-outlined search-clear-icon" @onclick='() => taskSearchTerm = ""'>close</span>
+        }
+    </div>
+</div>
+<div class="card-grid">
+    @if (availableTasks != null && availableTasks.Count > 0)
+    {
+        @foreach (var task in FilteredAvailableTasks)
+        {
+            <div class="glass-card task-box">
+                <div class="card-header">
+                    <div class="card-icon indigo">
+                        <span class="material-symbols-outlined">integration_instructions</span>
+                    </div>
+                    <h3 class="card-title">@task.Name</h3>
+                </div>
+                <p class="card-desc flex-1">@task.Description</p>
+                <div class="plugin-tags">
+                    <span class="plugin-tag method-count">Source: @task.PluginName</span>
+                    @if (!string.IsNullOrEmpty(task.ScheduleCron))
+                    {
+                        <span class="plugin-tag">
+                            <span class="material-symbols-outlined icon-sm-middle">schedule</span>
+                            @task.ScheduleCron
+                        </span>
+                    }
+                </div>
+                <button class="btn btn-primary mt-auto" @onclick="() => ShowPromptModal(task)">
+                    <span class="material-symbols-outlined">play_arrow</span> Run Now
+                </button>
+            </div>
+        }
+    }
+    else if (availableTasks != null && availableTasks.Count == 0)
+    {
+        <div class="glass-card">
+            <p class="card-desc">No tasks available. Enable plugins and tasks from the Plugins page.</p>
+        </div>
+    }
+    else
+    {
+        <div class="glass-card">
+            <p class="card-desc">Loading tasks...</p>
+        </div>
+    }
+</div>
+
+<!-- Run Task Modal -->
+@if (showModal && selectedTask != null)
+{
+    <div class="modal-backdrop" @onclick="() => showModal = false">
+        <div class="modal-content" @onclick:stopPropagation>
+            <h2 class="modal-title">Run Task - @selectedTask.Name</h2>
+            <p class="section-subtitle mb-3">@selectedTask.Description</p>
+
+            <div class="form-group">
+                <label class="form-label">User Prompt / Instructions (Optional)</label>
+                <textarea @bind="userPrompt" rows="4" class="form-control"
+                    placeholder="Provide any additional instructions or data for this run..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Attachments (Optional)</label>
+                <label class="file-drop-zone">
+                    <InputFile OnChange="HandleFilesSelected" multiple class="d-none" />
+                    <span class="material-symbols-outlined icon-lg-muted">upload_file</span>
+                    <span class="text-sm ">Drop files here or click to browse</span>
+                </label>
+                @if (selectedFiles.Count > 0)
+                {
+                    <div class="file-chips mt-2">
+                        @foreach (var file in selectedFiles)
+                        {
+                            <span class="file-chip">
+                                <span class="material-symbols-outlined">description</span>
+                                @file.Name
+                                <span class="material-symbols-outlined text-xs cursor-pointer ml-2" @onclick="() => RemoveFile(file)">close</span>
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Execution Mode</label>
+                <div class="radio-group">
+                    @if (selectedTask?.AllowedOptions.Contains("AutoExecution") == true)
+                    {
+                        <label class="radio-option @(selectedMode == ExecutionMode.Auto ? "selected" : "")">
+                            <input type="radio" name="mode" checked="@(selectedMode == ExecutionMode.Auto)"
+                                @onchange='() => selectedMode = ExecutionMode.Auto' />
+                            <div>
+                                <div class="radio-label">
+                                    <span class="material-symbols-outlined">bolt</span> Auto
+                                </div>
+                                <div class="radio-desc">Agent plans and auto-executes without user review. Ideal for background tasks.</div>
+                            </div>
+                        </label>
+                    }
+                    <label class="radio-option @(selectedMode == ExecutionMode.Planned ? "selected" : "")">
+                        <input type="radio" name="mode" checked="@(selectedMode == ExecutionMode.Planned)"
+                            @onchange='() => selectedMode = ExecutionMode.Planned' />
+                        <div>
+                            <div class="radio-label">
+                                <span class="material-symbols-outlined">assignment_turned_in</span> Planned
+                            </div>
+                            <div class="radio-desc">Agent creates a plan for review, then executes after approval</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="radio-option @(isPrivate ? "selected" : "") cursor-pointer mb-2">
+                    <input type="checkbox" @bind="isPrivate" class="accent-amber" />
+                    <div>
+                        <div class="radio-label">
+                            <span class="material-symbols-outlined">lock</span> Only my task
+                        </div>
+                    </div>
+                </label>
+                @if (selectedTask?.AllowedOptions.Contains("DebugMode") == true)
+                {
+                    <label class="radio-option @(debugMode ? "selected" : "") cursor-pointer mb-2">
+                        <input type="checkbox" @bind="debugMode" class="accent-amber" />
+                        <div>
+                            <div class="radio-label">
+                                <span class="material-symbols-outlined">bug_report</span> Debug Mode
+                            </div>
+                        </div>
+                    </label>
+                }
+                @if (selectedTask?.AllowedOptions.Contains("TraceMode") == true)
+                {
+                    <label class="radio-option @(traceMode ? "selected" : "") cursor-pointer">
+                        <input type="checkbox" @bind="traceMode" class="accent-amber" />
+                        <div>
+                            <div class="radio-label">
+                                <span class="material-symbols-outlined">manage_search</span> Trace Mode
+                            </div>
+                        </div>
+                    </label>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="error-alert mb-3">
+                    @errorMessage
+                </div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="() => showModal = false" disabled="@isSubmitting">Cancel</button>
+                <button class="btn btn-primary" @onclick="SubmitTask" disabled="@isSubmitting">
+                    <span class="material-symbols-outlined">send</span> @(isSubmitting ? "Submitting..." : "Send Task")
+                </button>
+            </div>
+        </div>
+    </div>
+}

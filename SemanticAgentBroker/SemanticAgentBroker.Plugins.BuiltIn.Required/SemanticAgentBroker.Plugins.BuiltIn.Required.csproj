@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SemanticAgentBroker.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference SDK but do NOT copy it to output - the host already has it.
+         This prevents type identity mismatch across AssemblyLoadContexts. -->
+    <ProjectReference Include="..\SemanticAgentBroker.Sdk\SemanticAgentBroker.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- Copy built DLL + its own deps (Docker.DotNet etc) to the Api's Plugins/BuiltIn.Required/ subdirectory. -->
+  <Target Name="CopyToPluginsDir" AfterTargets="Build">
+    <PropertyGroup>
+      <EffectiveSolutionDir Condition="'$(SolutionDir)' == '' or '$(SolutionDir)' == '*Undefined*'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</EffectiveSolutionDir>
+      <EffectiveSolutionDir Condition="'$(EffectiveSolutionDir)' == ''">$(SolutionDir)</EffectiveSolutionDir>
+      <PluginsOutputDir>$(EffectiveSolutionDir)SemanticAgentBroker.Api\bin\$(Configuration)\$(TargetFramework)\Plugins\BuiltIn.Required\</PluginsOutputDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(PluginsOutputDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginsOutputDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(PluginsOutputDir)" SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(TargetName).deps.json')" />
+    <Copy SourceFiles="@(ReferenceCopyLocalPaths)" DestinationFolder="$(PluginsOutputDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

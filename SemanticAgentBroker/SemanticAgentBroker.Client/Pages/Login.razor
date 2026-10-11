@@ -1,0 +1,89 @@
+@page "/login"
+@layout EmptyLayout
+@using SemanticAgentBroker.Client.Features.Auth
+@inject ClientAuthService AuthService
+@inject NavigationManager NavManager
+
+<div class="login-container">
+    <div class="login-box">
+        <div class="login-header">
+            <span class="material-symbols-outlined login-icon">smart_toy</span>
+            <h2>Agent Broker</h2>
+            <p>Sign in to continue</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="error-alert">
+                <span class="material-symbols-outlined">error</span>
+                <span>@ErrorMessage</span>
+            </div>
+        }
+
+        <form @onsubmit="HandleLogin" class="">
+            <div class="input-group">
+                <label>Username</label>
+                <div class="input-wrapper">
+                    <span class="material-symbols-outlined">person</span>
+                    <input type="text" @bind="Username" placeholder="Enter username" required />
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Password</label>
+                <div class="input-wrapper">
+                    <span class="material-symbols-outlined">lock</span>
+                    <input type="@(showPassword ? "text" : "password")" @bind="Password" placeholder="Enter password" required />
+                    <button type="button" class="btn-toggle-password" @onclick="TogglePasswordVisibility" tabindex="-1" title="@(showPassword ? "Hide password" : "Show password")">
+                        <span class="material-symbols-outlined">@(showPassword ? "visibility_off" : "visibility")</span>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="login-btn" disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <span class="spinner"></span>
+                }
+                else
+                {
+                    <span>Sign In</span>
+                }
+            </button>
+        </form>
+    </div>
+</div>
+
+
+
+@code {
+    private string Username { get; set; } = "";
+    private string Password { get; set; } = "";
+    private string? ErrorMessage { get; set; }
+    private bool IsLoading { get; set; } = false;
+    private bool showPassword { get; set; } = false;
+
+    private void TogglePasswordVisibility() => showPassword = !showPassword;
+
+    private async Task HandleLogin()
+    {
+        ErrorMessage = null;
+        IsLoading = true;
+        try
+        {
+            var err = await AuthService.LoginAsync(Username, Password);
+            if (err == null)
+            {
+                NavManager.NavigateTo("/");
+            }
+            else
+            {
+                ErrorMessage = err;
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}

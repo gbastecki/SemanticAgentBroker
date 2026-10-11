@@ -1,0 +1,527 @@
+@page "/live/{TaskId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject HttpClient Http
+@inject ISignalRService SignalR
+@inject IMarkdownService Markdown
+@inject SemanticAgentBroker.Client.Features.Shared.InteropService InteropService
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@implements IAsyncDisposable
+
+<PageTitle>Live - @TaskId.ToString()[..8]</PageTitle>
+
+<div class="live-layout">
+    <!-- Header Bar -->
+    <div class="live-header">
+        <div class="live-header-left">
+            <div>
+                <div class="task-title">@(taskDetails != null ? (!string.IsNullOrEmpty(taskDetails.PluginTaskId) ? taskDetails.PluginTaskId : "Custom Task") : "Loading...")</div>
+                <div class="task-id">@TaskId</div>
+            </div>
+            @if (taskDetails != null)
+            {
+                <span class="badge @taskDetails.State.ToString().ToLowerInvariant()">@taskDetails.State</span>
+                <span class="scenario-mode">
+                    @(taskDetails.Mode switch {
+                        ExecutionMode.Auto => "Auto",
+                        ExecutionMode.Planned => "Planned",
+                        _ => ""
+                    })
+                </span>
+            }
+            @if (tokenLimitOrchestrator > 0 || tokenLimitSubagent > 0)
+            {
+                <div class="token-counter-group">
+                    @if (tokenLimitOrchestrator > 0)
+                    {
+                        var percentOrch = Math.Min(100, Math.Max(0, (double)currentTokenCountOrchestrator / tokenLimitOrchestrator * 100));
+                        var statusClassOrch = percentOrch >= 90 ? "danger" : percentOrch >= 70 ? "warning" : "normal";
+                        <div class="token-counter-pill orchestrator @statusClassOrch" title="Orchestrator context: @currentTokenCountOrchestrator.ToString("N0") / @tokenLimitOrchestrator.ToString("N0") tokens (@percentOrch.ToString("F1")%)">
+                            <div class="token-counter-header">
+                                <span class="material-symbols-outlined token-icon">memory</span>
+                                <span class="token-label">Orchestrator</span>
+                                <span class="token-value">@FormatTokenCount(currentTokenCountOrchestrator) / @FormatTokenCount(tokenLimitOrchestrator)</span>
+                                <span class="token-percentage">@percentOrch.ToString("F0")%</span>
+                            </div>
+                            <div class="token-progress-track">
+                                <div class="token-progress-bar" style="width: @(percentOrch.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;"></div>
+                            </div>
+                        </div>
+                    }
+                    @if (tokenLimitSubagent > 0)
+                    {
+                        var percentSub = Math.Min(100, Math.Max(0, (double)currentTokenCountSubagent / tokenLimitSubagent * 100));
+                        var statusClassSub = percentSub >= 90 ? "danger" : percentSub >= 70 ? "warning" : "normal";
+                        <div class="token-counter-pill subagent @statusClassSub" title="Subagent context: @currentTokenCountSubagent.ToString("N0") / @tokenLimitSubagent.ToString("N0") tokens (@percentSub.ToString("F1")%)">
+                            <div class="token-counter-header">
+                                <span class="material-symbols-outlined token-icon">smart_toy</span>
+                                <span class="token-label">Subagent</span>
+                                <span class="token-value">@FormatTokenCount(currentTokenCountSubagent) / @FormatTokenCount(tokenLimitSubagent)</span>
+                                <span class="token-percentage">@percentSub.ToString("F0")%</span>
+                            </div>
+                            <div class="token-progress-track">
+                                <div class="token-progress-bar" style="width: @(percentSub.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <div class="live-header-right">
+            @if (taskDetails?.State is TaskState.InProgress)
+            {
+                <button class="btn btn-warning btn-sm" @onclick="PauseTask">
+                    <span class="material-symbols-outlined">pause</span> Pause
+                </button>
+            }
+            @if (taskDetails?.State is TaskState.Paused)
+            {
+                <button class="btn btn-success btn-sm" @onclick="ResumeTask">
+                    <span class="material-symbols-outlined">play_arrow</span> Resume
+                </button>
+            }
+            @if (taskDetails?.State is not (TaskState.Completed or TaskState.Cancelled or TaskState.Failed) && taskDetails?.AllowedOptions?.Contains("Delete") == true)
+            {
+                <button class="btn btn-danger btn-sm" @onclick="DeleteTask">
+                    <span class="material-symbols-outlined">delete</span>
+                </button>
+            }
+            @if (taskDetails?.State is TaskState.Completed or TaskState.Failed or TaskState.Cancelled)
+            {
+                <button class="btn btn-secondary btn-sm" @onclick="RestartTask">
+                    <span class="material-symbols-outlined">restart_alt</span> Restart
+                </button>
+            }
+
+            <label class="btn btn-secondary btn-sm d-flex align-items-center gap-1 cursor-pointer">
+                <input type="checkbox" @bind="followAgent" />
+                <span class="text-xs">Follow</span>
+            </label>
+
+            <div class="view-tabs">
+                <button class="view-tab @(activeTab == "chat" ? "active" : "")" @onclick='() => SetActiveTab("chat")'>Chat</button>
+                @if (taskDetails?.AllowedOptions?.Contains("ConsoleView") == true)
+                {
+                    <button class="view-tab @(activeTab == "console" ? "active" : "")" @onclick='() => SetActiveTab("console")'>Console</button>
+                    <button class="view-tab @(activeTab == "split" ? "active" : "")" @onclick='() => SetActiveTab("split")'>Split</button>
+                }
+                <button class="view-tab @(activeTab == "files" ? "active" : "")" @onclick="ActivateFilesTab">
+                    <span class="material-symbols-outlined icon-middle">folder</span> Files
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Area -->
+    @if (activeTab == "split")
+    {
+        <div class="split-view">
+            <div class="panel panel-user">
+                @RenderChatPanel()
+            </div>
+            <div class="panel panel-dev">
+                @RenderDevConsole()
+            </div>
+        </div>
+    }
+    else if (activeTab == "chat")
+    {
+        <div class="panel panel-user flex-1">
+            @RenderChatPanel()
+        </div>
+    }
+    else if (activeTab == "console")
+    {
+        <div class="panel panel-dev flex-1">
+            @RenderDevConsole()
+        </div>
+    }
+    else if (activeTab == "files")
+    {
+        <div class="panel panel-files flex-1">
+            @RenderFilesPanel()
+        </div>
+    }
+
+    @if (showFileViewer)
+    {
+        <FileViewerModal TaskId="TaskId"
+                         FileName="@viewingFileName"
+                         CanEdit="@(taskDetails?.AllowedOptions?.Contains("EditFiles") == true)"
+                         OnClose="CloseFileViewer"
+                         OnFileSaved="LoadWorkspaceFiles" />
+    }
+</div>
+
+@code {
+    private RenderFragment RenderChatPanel() => __builder =>
+    {
+        <div class="chat-container">
+            <div class="chat-messages">
+                @{
+                    ChatMessage[] messagesSnapshot;
+                    lock (_chatLock)
+                    {
+                        messagesSnapshot = chatMessages.ToArray();
+                    }
+                    var lastPlanMsg = messagesSnapshot.LastOrDefault(m => m.Type == "plan");
+                }
+                @foreach (var msg in messagesSnapshot)
+                {
+                    <div @key="msg" class="chat-bubble @msg.Type content-visibility-auto">
+                        @if (msg.Type == "thought")
+                        {
+                            <div class="bubble-label">
+                                <span class="material-symbols-outlined">psychology</span> Thinking @(msg.AgentName != null ? $"- {msg.AgentName}" : "")
+                            </div>
+                            <div class="thought-content">@msg.Content</div>
+                            @if (!string.IsNullOrEmpty(msg.Observation))
+                            {
+                                <div class="thought-observation mt-2 pt-2 border-top border-secondary opacity-75 text-sm">
+                                    <strong>Observation:</strong> @msg.Observation
+                                </div>
+                            }
+                        }
+                        else if (msg.Type == "tool")
+                        {
+                            <div class="bubble-label">
+                                <span><span class="material-symbols-outlined">build</span> Tool @(msg.AgentName != null ? $"- {msg.AgentName}" : "")</span>
+                                @if (msg.FullHtml != null || msg.FullContent != null)
+                                {
+                                    <button class="btn-expansion-toggle" @onclick="() => ToggleExpansion(msg)">
+                                        <span class="material-symbols-outlined">@(msg.IsExpanded ? "unfold_less" : "unfold_more")</span>
+                                        @(msg.IsExpanded ? "Show less" : "Show full output")
+                                    </button>
+                                }
+                            </div>
+                            @if (msg.IsExpanded && msg.FullHtml != null)
+                            {
+                                <div class="md-content">@((MarkupString)msg.FullHtml)</div>
+                            }
+                            else if (msg.IsExpanded && msg.FullContent != null)
+                            {
+                                <div class="md-content">@((MarkupString)Markdown.ToHtml(msg.FullContent))</div>
+                            }
+                            else if (msg.CachedHtml != null)
+                            {
+                                <div class="md-content">@((MarkupString)msg.CachedHtml)</div>
+                            }
+                            else
+                            {
+                                <div class="md-content">@((MarkupString)Markdown.ToHtml(msg.Content))</div>
+                            }
+                            @if (msg.FilesAffected != null)
+                            {
+                                <div class="file-chips">
+                                    @foreach (var file in msg.FilesAffected.Where(f => workspaceFiles.Any(w => w.Name == f)))
+                                    {
+                                        <span class="file-chip" @onclick="() => ViewWorkspaceFile(file)">
+                                            <span class="material-symbols-outlined">description</span> @file
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        }
+                        else if (msg.Type is "plan" or "planReview")
+                        {
+                            <div class="bubble-label">
+                                <span class="material-symbols-outlined">assignment</span> Implementation Plan @(msg.AgentName != null ? $"- {msg.AgentName}" : "")
+                            </div>
+                            <div class="md-content">@((MarkupString)(msg.CachedHtml ?? Markdown.ToHtml(msg.Content)))</div>
+                            <div class="file-chips">
+                                <span class="file-chip" @onclick='() => ViewWorkspaceFile("_implementation_plan.md")'>
+                                    <span class="material-symbols-outlined">description</span> _implementation_plan.md
+                                </span>
+                            </div>
+                        }
+                        else if (msg.Type == "runtimePlan")
+                        {
+                            <div class="bubble-label">
+                                <span class="material-symbols-outlined">assignment_turned_in</span> Runtime Plan @(msg.AgentName != null ? $"- {msg.AgentName}" : "")
+                            </div>
+                            <div class="md-content">@((MarkupString)(msg.CachedHtml ?? Markdown.ToHtml(msg.Content)))</div>
+                            <div class="file-chips">
+                                <span class="file-chip" @onclick='() => ViewWorkspaceFile("_runtime_plan.md")'>
+                                    <span class="material-symbols-outlined">description</span> _runtime_plan.md
+                                </span>
+                            </div>
+                        }
+                        else if (msg.Type == "agent")
+                        {
+                            <div class="bubble-label">
+                                <span class="material-symbols-outlined">smart_toy</span> Agent @(msg.AgentName != null ? $"- {msg.AgentName}" : "")
+                            </div>
+                            <div class="md-content">@((MarkupString)(msg.CachedHtml ?? Markdown.ToHtml(msg.Content)))</div>
+                            @if (msg.FilesAffected != null)
+                            {
+                                <div class="file-chips">
+                                    @foreach (var file in msg.FilesAffected.Where(f => workspaceFiles.Any(w => w.Name == f)))
+                                    {
+                                        <span class="file-chip" @onclick="() => ViewWorkspaceFile(file)">
+                                            <span class="material-symbols-outlined">description</span> @file
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        }
+                        else if (msg.Type == "compaction")
+                        {
+                            <div class="bubble-label">
+                                <span class="material-symbols-outlined">compress</span> System @(msg.AgentName != null ? $"- {msg.AgentName}" : "")
+                            </div>
+                            @msg.Content
+                        }
+                        else
+                        {
+                            <div class="bubble-label">
+                                <span class="material-symbols-outlined">person</span> @(msg.UserName ?? "User")
+                            </div>
+                            <div class="md-content">@((MarkupString)(msg.CachedHtml ?? Markdown.ToHtml(msg.Content)))</div>
+                        }
+
+                        @if (msg.Type == "plan" && planRequiresApproval && msg == lastPlanMsg)
+                        {
+                            <div class="plan-actions">
+                                <button class="btn btn-success btn-sm" @onclick="ApprovePlanAction">
+                                    <span class="material-symbols-outlined">check_circle</span> Approve
+                                </button>
+                                <button class="btn btn-danger btn-sm" @onclick="TogglePlanRejectInput">
+                                    <span class="material-symbols-outlined">cancel</span> Reject
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(activityLabel) && taskDetails?.State is TaskState.InProgress or TaskState.AwaitingApproval or TaskState.Planning or TaskState.Queued)
+            {
+                <div class="activity-indicator">
+                    <div class="activity-dots"><span></span><span></span><span></span></div>
+                    @activityLabel
+                </div>
+            }
+
+            @* -- Plan Review Panel -- *@
+            @if (isPlanReviewActive || taskDetails?.State is TaskState.PlanReview)
+            {
+                <div class="plan-review-bar">
+                    <div class="plan-review-header">
+                        <span class="material-symbols-outlined">assignment</span>
+                        <span><strong>Implementation Plan @($"v{planReviewVersion}")</strong> - Review required before execution</span>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(planReviewQuestions))
+                    {
+                        <div class="plan-questions">
+                            <strong>Open Questions:</strong>
+                            <div class="md-content">@((MarkupString)Markdown.ToHtml(planReviewQuestions))</div>
+                        </div>
+                    }
+
+                    <div class="btn-group d-flex justify-content-center flex-wrap">
+                        <button class="btn btn-success" @onclick="ApprovePlanAction">
+                            <span class="material-symbols-outlined">check_circle</span> Approve Plan
+                        </button>
+                        <button class="btn btn-warning" @onclick="TogglePlanEditor">
+                            <span class="material-symbols-outlined">edit</span> Edit Plan
+                        </button>
+                        <button class="btn btn-danger" @onclick="TogglePlanRejectInput">
+                            <span class="material-symbols-outlined">sync</span> Reject & Revise
+                        </button>
+                        <button class="btn btn-secondary" @onclick="TogglePlanQuestionInput">
+                            <span class="material-symbols-outlined">help</span> Ask Question
+                        </button>
+                    </div>
+
+                    @if (showPlanEditor)
+                    {
+                        <div class="modal-backdrop" @onclick="TogglePlanEditor">
+                            <div class="modal-content file-viewer-modal" @onclick:stopPropagation>
+                                <div class="file-viewer-header">
+                                    <h3 class="m-0 text-md">Edit Implementation Plan</h3>
+                                    <button class="btn-icon" @onclick="TogglePlanEditor">
+                                        <span class="material-symbols-outlined">close</span>
+                                    </button>
+                                </div>
+                                <textarea class="file-editor-textarea" @bind="planEditorContent" @bind:event="oninput"></textarea>
+                                <div class="file-editor-footer">
+                                    <div class="file-editor-actions">
+                                        <button class="btn btn-sm btn-primary" @onclick="SubmitModifiedPlan">
+                                            <span class="material-symbols-outlined text-sm">send</span>
+                                            <text>Submit Modified Plan</text>
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" @onclick="TogglePlanEditor">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (showPlanRejectInput)
+                    {
+                        <div class="mt-2 d-flex gap-2">
+                            <input @bind="planRejectFeedback" class="form-control text-sm flex-1" placeholder="What should be changed? The AI will revise the plan..." />
+                            <button class="btn btn-danger btn-sm" @onclick="SubmitPlanRejection">Send</button>
+                        </div>
+                    }
+
+                    @if (showPlanQuestionInput)
+                    {
+                        <div class="mt-2 d-flex gap-2">
+                            <input @bind="planQuestionText" class="form-control text-sm flex-1" placeholder="Ask a question about the plan..." />
+                            <button class="btn btn-primary btn-sm" @onclick="SubmitPlanQuestion">Ask</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* -- Approval Bar -- *@
+            @if (taskDetails?.State is TaskState.AwaitingApproval)
+            {
+                <div class="approval-bar">
+                    <div class="approval-prompt">
+                        <span class="material-symbols-outlined">warning</span>
+                        <span>Agent is requesting approval to proceed.</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(pendingApprovalDetail))
+                    {
+                        <div class="approval-detail">
+                            <div class="md-content">@((MarkupString)Markdown.ToHtml(pendingApprovalDetail))</div>
+                        </div>
+                    }
+                    <div class="btn-group justify-content-center">
+                        <button class="btn btn-success" @onclick="ApproveStep">
+                            <span class="material-symbols-outlined">check_circle</span> Approve
+                        </button>
+                        <button class="btn btn-danger" @onclick="ToggleRejectInput">
+                            <span class="material-symbols-outlined">cancel</span> Reject
+                        </button>
+                    </div>
+                    @if (showRejectInput)
+                    {
+                        <div class="d-flex gap-2 mt-2 w-100">
+                            <input @bind="rejectFeedback" class="form-control text-sm flex-1" placeholder="Why are you rejecting? (optional feedback)" @onkeydown="HandleRejectKeyDown" />
+                            <button class="btn btn-danger btn-sm" @onclick="RejectStep">Send</button>
+                        </div>
+                    }
+                    <div class="d-flex gap-2 mt-2 w-100">
+                        <input @bind="approvalInput" class="form-control text-sm flex-1" placeholder="Send a message to the agent..." @onkeydown="HandleApprovalKeyDown" />
+                        <button class="btn btn-primary btn-sm" @onclick="SendApprovalMessage">
+                            <span class="material-symbols-outlined">send</span>
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @* -- Chat Input -- *@
+            @if (taskDetails?.State is TaskState.InProgress or TaskState.AwaitingApproval or TaskState.PlanReview or TaskState.Queued
+                or TaskState.Completed or TaskState.Failed)
+            {
+                <ChatInput Placeholder="@GetInputPlaceholder()"
+                           ShowFollowUp="@(taskDetails.State is TaskState.Completed or TaskState.Failed)"
+                           OnSubmit="HandleChatSubmit"
+                           OnFollowUp="HandleFollowUp" />
+            }
+        </div>
+    };
+
+    private RenderFragment RenderDevConsole() => __builder =>
+    {
+        AgentTaskLog[] logsSnapshot;
+        lock (_logLock)
+        {
+            logsSnapshot = logs.ToArray();
+        }
+
+        <div class="terminal h-100">
+            @if (logsSnapshot.Length == 0)
+            {
+                <div class="empty-state h-100">
+                    <div class="empty-state-icon">
+                        <span class="material-symbols-outlined">terminal</span>
+                    </div>
+                    <div class="empty-state-text">Waiting for logs...</div>
+                </div>
+            }
+            else
+            {
+                @foreach (var log in logsSnapshot)
+                {
+                    <div class="log-line" @key="log">
+                        <span class="log-time">[@log.Timestamp.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)]</span>
+                        <span class="log-level @log.LogLevel.ToLowerInvariant()">[@log.LogLevel]</span>
+                        <span class="log-msg">@Truncate(log.Message, 500)</span>
+                    </div>
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderFilesPanel() => __builder =>
+    {
+        <div class="workspace-panel">
+            <div class="workspace-header">
+                <h3 class="m-0 text-md">Workspace Files</h3>
+                @if (taskDetails?.AllowedOptions?.Contains("UploadFiles") == true)
+                {
+                    <label class="btn btn-primary btn-sm upload-btn">
+                        <span class="material-symbols-outlined">upload_file</span> Upload
+                        <InputFile OnChange="HandleFileUpload" multiple class="d-none" />
+                    </label>
+                }
+            </div>
+
+            @if (isLoadingFiles)
+            {
+                <div class="empty-state p-4">
+                    <div class="activity-dots"><span></span><span></span><span></span></div>
+                    Loading files...
+                </div>
+            }
+            else if (workspaceFiles.Count == 0)
+            {
+                <div class="empty-state p-4">
+                    <div class="empty-state-icon">
+                        <span class="material-symbols-outlined">folder_open</span>
+                    </div>
+                    <div class="empty-state-text">No files yet. The agent will create files here during execution.</div>
+                </div>
+            }
+            else
+            {
+                <div class="file-list">
+                    @foreach (var file in workspaceFiles)
+                    {
+                        <div class="file-row">
+                            <div class="file-info" @onclick="() => file.IsTextFile ? ViewWorkspaceFile(file.Name) : DownloadWorkspaceFile(file.Name)">
+                                <span class="material-symbols-outlined file-icon">@(file.IsTextFile ? "description" : "insert_drive_file")</span>
+                                <div class="file-details">
+                                    <span class="file-name">@file.Name</span>
+                                    <span class="file-meta">@FormatFileSize(file.SizeBytes) - @file.LastModified.ToLocalTime().ToString("HH:mm:ss")</span>
+                                </div>
+                            </div>
+                            <div class="file-actions">
+                                @if (file.IsTextFile)
+                                {
+                                    <button class="btn-icon" title="View" @onclick="() => ViewWorkspaceFile(file.Name)">
+                                        <span class="material-symbols-outlined">visibility</span>
+                                    </button>
+                                }
+                                <button class="btn-icon" title="Download" @onclick="() => DownloadWorkspaceFile(file.Name)">
+                                    <span class="material-symbols-outlined">download</span>
+                                </button>
+                                @if (taskDetails?.AllowedOptions?.Contains("UploadFiles") == true || taskDetails?.AllowedOptions?.Contains("EditFiles") == true)
+                                {
+                                    <button class="btn-icon danger" title="Delete" @onclick="() => DeleteWorkspaceFile(file.Name)">
+                                        <span class="material-symbols-outlined">delete</span>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+    };
+}

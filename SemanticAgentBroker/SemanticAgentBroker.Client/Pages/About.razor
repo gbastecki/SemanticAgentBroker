@@ -1,0 +1,171 @@
+@page "/about"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject NavigationManager NavManager
+@inject SemanticAgentBroker.Client.Features.Markdown.IMarkdownService MarkdownService
+@inject SemanticAgentBroker.Client.Features.Shared.InteropService Interop
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>About - Semantic Agent Broker</PageTitle>
+
+<div class="about-page">
+    <div class="about-header-section">
+        <div class="section-header mb-1">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h1 class="section-title">About Semantic Agent Broker</h1>
+                <span class="badge badge-inprogress">v1.0.0</span>
+                <span class="badge badge-author">
+                    <span class="material-symbols-outlined icon-author">person</span>
+                    Grzegorz Bastecki
+                </span>
+            </div>
+        </div>
+        <p class="section-subtitle mb-3">
+            Enterprise-grade dynamic AI agent platform, execution engine, documentation, and licensing.
+        </p>
+
+        <!-- Quick Info Cards -->
+        <div class="stats-row about-highlights">
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-indigo">
+                    <span class="material-symbols-outlined">psychology</span>
+                </div>
+                <div>
+                    <div class="about-card-title">ReAct Engine</div>
+                    <div class="about-card-desc">Autonomous reasoning loop with token tracking & context compaction</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-cyan">
+                    <span class="material-symbols-outlined">tune</span>
+                </div>
+                <div>
+                    <div class="about-card-title">Dual Execution</div>
+                    <div class="about-card-desc">Autonomous (Auto) & Human-in-the-loop (Planned) approval modes</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-emerald">
+                    <span class="material-symbols-outlined">security</span>
+                </div>
+                <div>
+                    <div class="about-card-title">Isolated Sandbox</div>
+                    <div class="about-card-desc">Network-disabled container sandbox for safe Python executions</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-amber">
+                    <span class="material-symbols-outlined">cloud_off</span>
+                </div>
+                <div>
+                    <div class="about-card-title">Air-Gapped Ready</div>
+                    <div class="about-card-desc">100% self-contained Blazor WASM with local offline fonts & assets</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documentation & Project Files Section -->
+    <div class="glass-card doc-viewer-card">
+        <!-- Header with Document Tabs & Toolbar -->
+        <div class="doc-viewer-header">
+            <div class="doc-tabs-container">
+                @foreach (var doc in documents)
+                {
+                    <button class="doc-tab-btn @(selectedDocId == doc.Id ? "active" : "")"
+                            @onclick="() => SelectDocAsync(doc.Id)"
+                            title="@doc.Description">
+                        <span class="material-symbols-outlined tab-icon">@doc.Icon</span>
+                        <span class="tab-title">@doc.Title</span>
+                    </button>
+                }
+            </div>
+
+            <div class="doc-toolbar">
+                @if (activeDoc?.IsMarkdown == true)
+                {
+                    <div class="view-mode-toggle">
+                        <button class="btn btn-sm @(viewMode == DocViewMode.Rendered ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => viewMode = DocViewMode.Rendered"
+                                title="Render formatted Markdown">
+                            <span class="material-symbols-outlined">article</span>
+                            Formatted
+                        </button>
+                        <button class="btn btn-sm @(viewMode == DocViewMode.Raw ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => viewMode = DocViewMode.Raw"
+                                title="View raw plain text">
+                            <span class="material-symbols-outlined">data_object</span>
+                            Raw
+                        </button>
+                    </div>
+                }
+
+                <button class="btn btn-secondary btn-sm" @onclick="CopyToClipboardAsync" disabled="@(isLoading || string.IsNullOrEmpty(currentContent))" title="Copy document to clipboard">
+                    <span class="material-symbols-outlined">@(isCopied ? "check" : "content_copy")</span>
+                    @(isCopied ? "Copied!" : "Copy")
+                </button>
+
+                <button class="btn btn-secondary btn-sm" @onclick="DownloadActiveDocAsync" disabled="@(isLoading || string.IsNullOrEmpty(currentContent))" title="Download file">
+                    <span class="material-symbols-outlined">download</span>
+                    Download
+                </button>
+
+                <button class="btn btn-secondary btn-sm" @onclick="RefreshDocAsync" disabled="@isLoading" title="Fetch newest version of document">
+                    <span class="material-symbols-outlined @(isLoading ? "spin-icon" : "")">sync</span>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Document Meta Bar -->
+        @if (activeDoc != null)
+        {
+            <div class="doc-meta-bar">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="material-symbols-outlined icon-muted">info</span>
+                    <span class="doc-description">@activeDoc.Description</span>
+                </div>
+                <span class="doc-path-pill">
+                    <code>/docs/@activeDoc.FileName</code>
+                </span>
+            </div>
+        }
+
+        <!-- Content Viewer Body -->
+        <div class="doc-viewer-body">
+            @if (isLoading)
+            {
+                <div class="doc-loading-state">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-doc-text">
+                        <span>Loading <strong>@(activeDoc?.Title ?? "document")</strong>...</span>
+                        <span class="loading-doc-sub">Rendering formatted content</span>
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="doc-error-state">
+                    <div class="stat-icon stat-icon-rose mb-2">
+                        <span class="material-symbols-outlined">error</span>
+                    </div>
+                    <h3 class="text-md font-semibold text-danger">Failed to Load Document</h3>
+                    <p class="text-secondary text-sm mb-3">@errorMessage</p>
+                    <button class="btn btn-primary btn-sm" @onclick="RefreshDocAsync">
+                        <span class="material-symbols-outlined">refresh</span> Try Again
+                    </button>
+                </div>
+            }
+            else if (activeDoc?.IsMarkdown == true && viewMode == DocViewMode.Rendered)
+            {
+                <div class="md-content rendered-doc-container">
+                    @((MarkupString)renderedHtml)
+                </div>
+            }
+            else
+            {
+                <pre class="raw-doc-container"><code>@currentContent</code></pre>
+            }
+        </div>
+    </div>
+</div>

@@ -1,0 +1,101 @@
+.searchable-select {
+    position: relative;
+    width: 100%;
+    outline: none;
+}
+
+.select-input-container {
+    position: relative;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    cursor: text;
+}
+
+    .select-input-container.open {
+        border-color: var(--accent-indigo);
+        box-shadow: 0 0 0 2px var(--accent-indigo-glow);
+        background: var(--bg-surface);
+    }
+
+.select-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 10px 36px 10px 10px;
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+}
+
+    .select-input:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+.select-chevron {
+    position: absolute;
+    right: 10px;
+    color: var(--text-secondary);
+    pointer-events: none;
+    transition: transform 0.2s;
+}
+
+.select-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 1050;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.select-option {
+    padding: 10px 12px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: background 0.15s;
+}
+
+    .select-option:hover, .select-option.highlighted {
+        background: var(--bg-card);
+    }
+
+    .select-option.selected {
+        background: var(--accent-indigo-glow);
+        color: var(--accent-indigo);
+        font-weight: 500;
+    }
+
+        .select-option.selected.highlighted {
+            background: rgba(99, 102, 241, 0.25);
+        }
+
+.select-no-results {
+    padding: 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

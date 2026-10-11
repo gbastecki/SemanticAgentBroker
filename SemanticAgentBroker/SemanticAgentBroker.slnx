@@ -1,0 +1,64 @@
+<Solution>
+  <Folder Name="/Docs/">
+    <File Path="../DOCUMENTATION.md" />
+    <File Path="../LICENSE" />
+    <File Path="../NOTICE" />
+    <File Path="../README.md" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="Samples/Samples.Common/Samples.Common.csproj" />
+    <Project Path="Samples/Samples.RestApiIntegrationExample/Samples.RestApiIntegrationExample.csproj" />
+    <Project Path="Samples/Samples.TaskManagementExample/Samples.TaskManagementExample.csproj" />
+    <Project Path="Samples/Samples.RealTimeStreamingExample/Samples.RealTimeStreamingExample.csproj" />
+    <Project Path="Samples/Samples.FileIngestionExample/Samples.FileIngestionExample.csproj" />
+  </Folder>
+  <Folder Name="/Samples/Configs/">
+    <File Path="Samples/Configs/README.md" />
+    <File Path="Samples/Configs/appsettings.ollama.json" />
+    <File Path="Samples/Configs/appsettings.vllm.json" />
+    <File Path="Samples/Configs/appsettings.vllm-basic-auth.json" />
+    <File Path="Samples/Configs/appsettings.openai.json" />
+    <File Path="Samples/Configs/appsettings.claude.json" />
+    <File Path="Samples/Configs/appsettings.gemini.json" />
+    <File Path="Samples/Configs/appsettings.all-providers-unified.json" />
+  </Folder>
+  <Folder Name="/Samples/Configs/Proxy/">
+    <File Path="Samples/Configs/Proxy/README.md" />
+    <File Path="Samples/Configs/Proxy/nginx-vllm-basic-auth.conf" />
+    <File Path="Samples/Configs/Proxy/.htpasswd.example" />
+    <File Path="Samples/Configs/Proxy/docker-compose.vllm-nginx.yml" />
+  </Folder>
+  <Folder Name="/Samples/Configs/Tokenizers/">
+    <File Path="Samples/Configs/Tokenizers/README.md" />
+    <File Path="Samples/Configs/Tokenizers/download_tokenizers.py" />
+  </Folder>
+  <Folder Name="/Sandbox/">
+    <File Path="Sandbox/build-sandbox.ps1" />
+    <File Path="Sandbox/docker-compose.yml" />
+    <File Path="Sandbox/Dockerfile" />
+    <File Path="Sandbox/README.md" />
+  </Folder>
+  <Folder Name="/screenshots/">
+    <File Path="../screenshots/DashboardView.png" />
+    <File Path="../screenshots/DashboardViewDarkTheme.png" />
+    <File Path="../screenshots/LiveExecutionExampleTaskFinished.png" />
+    <File Path="../screenshots/LiveExecutionExampleTaskStart.png" />
+    <File Path="../screenshots/PluginView.png" />
+    <File Path="../screenshots/TaskQueueView.png" />
+  </Folder>
+  <Folder Name="/_ps_scripts/">
+    <File Path="../_ps_scripts/clean-bin-obj.ps1" />
+    <File Path="../_ps_scripts/update-package-versions.ps1" />
+  </Folder>
+  <Project Path="SemanticAgentBroker.Api/SemanticAgentBroker.Api.csproj" />
+  <Project Path="SemanticAgentBroker.Client/SemanticAgentBroker.Client.csproj" />
+  <Project Path="SemanticAgentBroker.ClientHost/SemanticAgentBroker.ClientHost.csproj" />
+  <Project Path="SemanticAgentBroker.Core/SemanticAgentBroker.Core.csproj" />
+  <Project Path="SemanticAgentBroker.Plugins.BuiltIn.Optional/SemanticAgentBroker.Plugins.BuiltIn.Optional.csproj" />
+  <Project Path="SemanticAgentBroker.Plugins.BuiltIn.Required/SemanticAgentBroker.Plugins.BuiltIn.Required.csproj" />
+  <Project Path="SemanticAgentBroker.Plugins.MockData/SemanticAgentBroker.Plugins.MockData.csproj" />
+  <Project Path="SemanticAgentBroker.Sdk/SemanticAgentBroker.Sdk.csproj" />
+  <Project Path="SemanticAgentBroker.Shared/SemanticAgentBroker.Shared.csproj" />
+  <Project Path="SemanticAgentBroker.UnitTests/SemanticAgentBroker.UnitTests.csproj" />
+</Solution>
+

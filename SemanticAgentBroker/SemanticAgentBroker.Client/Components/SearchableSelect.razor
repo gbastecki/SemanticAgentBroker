@@ -1,0 +1,195 @@
+@typeparam TValue
+@using Microsoft.AspNetCore.Components.Web
+@inject SemanticAgentBroker.Client.Features.Shared.InteropService InteropService
+@implements IAsyncDisposable
+
+<div class="searchable-select" @onfocusout="HandleFocusOut" tabindex="-1" @ref="containerRef">
+    <div class="select-input-container @(isOpen ? "open" : "")" @onclick="OpenDropdown" @ref="inputRef">
+        <input type="text"
+               class="select-input"
+               placeholder="@Placeholder"
+               value="@(isOpen ? searchTerm : DisplayValue)"
+               @oninput="HandleInput"
+               @onfocus="OpenDropdown"
+               @onkeydown="HandleKeyDown"
+               disabled="@Disabled" />
+        <span class="material-symbols-outlined select-chevron cursor-pointer" @onclick="ToggleDropdown" @onclick:stopPropagation="true">
+            @(isOpen ? "expand_less" : "expand_more")
+        </span>
+    </div>
+
+    @if (isOpen)
+    {
+        <div class="select-dropdown" @ref="dropdownRef">
+            @if (!FilteredOptions.Any())
+            {
+                <div class="select-no-results">No options found.</div>
+            }
+            else
+            {
+                var index = 0;
+                @foreach (var option in FilteredOptions)
+                {
+                    var currentIndex = index++;
+                    <div class="select-option @(EqualityComparer<TValue>.Default.Equals(Value, option.Value) ? "selected" : "") @(highlightedIndex == currentIndex ? "highlighted" : "")"
+                         @onclick="() => SelectOption(option)"
+                         @onmouseover="() => highlightedIndex = currentIndex">
+                        @option.Text
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+
+
+@code {
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    
+    [Parameter] public IEnumerable<SelectOptionItem<TValue>> Options { get; set; } = Array.Empty<SelectOptionItem<TValue>>();
+    [Parameter] public string Placeholder { get; set; } = "Select...";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<TValue?> OnSelected { get; set; }
+
+    private bool isOpen = false;
+    private string searchTerm = "";
+    private int highlightedIndex = -1;
+    private ElementReference containerRef;
+    private ElementReference inputRef;
+    private ElementReference dropdownRef;
+    private DotNetObjectReference<object>? objRef;
+    private bool wasOpen = false;
+
+    protected override void OnInitialized()
+    {
+        objRef = DotNetObjectReference.Create<object>((object)this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (isOpen && !wasOpen)
+        {
+            wasOpen = true;
+            await InteropService.PositionDropdownAsync(inputRef, dropdownRef, objRef!);
+        }
+        else if (!isOpen && wasOpen)
+        {
+            wasOpen = false;
+        }
+    }
+
+    [JSInvokable]
+    public void CloseDropdown()
+    {
+        isOpen = false;
+        searchTerm = "";
+        highlightedIndex = -1;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync() { objRef?.Dispose(); try { await InteropService.CleanupDropdownAsync(); } catch {} }
+
+    private string DisplayValue => Options.FirstOrDefault(o => EqualityComparer<TValue>.Default.Equals(o.Value, Value))?.Text ?? "";
+
+    private IEnumerable<SelectOptionItem<TValue>> FilteredOptions => string.IsNullOrWhiteSpace(searchTerm)
+        ? Options
+        : Options.Where(o => o.Text.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+
+    private void ToggleDropdown()
+    {
+        if (Disabled) return;
+        if (!isOpen)
+        {
+            OpenDropdown();
+        }
+        else
+        {
+            isOpen = false;
+        }
+    }
+
+    private void OpenDropdown()
+    {
+        if (Disabled) return;
+        isOpen = true;
+        searchTerm = "";
+        highlightedIndex = -1;
+    }
+
+    private async Task SelectOption(SelectOptionItem<TValue> option)
+    {
+        Value = option.Value;
+        isOpen = false;
+        searchTerm = "";
+        highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(Value);
+        if (OnSelected.HasDelegate)
+        {
+            await OnSelected.InvokeAsync(Value);
+        }
+    }
+
+    private void HandleInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+        isOpen = true;
+        highlightedIndex = -1;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!isOpen && (e.Key == "ArrowDown" || e.Key == "ArrowUp" || e.Key == "Enter"))
+        {
+            OpenDropdown();
+            return;
+        }
+
+        var optionsList = FilteredOptions.ToList();
+        
+        if (e.Key == "ArrowDown")
+        {
+            highlightedIndex++;
+            if (highlightedIndex >= optionsList.Count) highlightedIndex = optionsList.Count - 1;
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            highlightedIndex--;
+            if (highlightedIndex < 0) highlightedIndex = 0;
+        }
+        else if (e.Key == "Enter" && isOpen)
+        {
+            if (highlightedIndex >= 0 && highlightedIndex < optionsList.Count)
+            {
+                await SelectOption(optionsList[highlightedIndex]);
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            isOpen = false;
+        }
+
+        if (e.Key == "ArrowDown" || e.Key == "ArrowUp")
+        {
+            StateHasChanged();
+            await Task.Yield();
+            try { await InteropService.ScrollSelectOptionIntoViewAsync(containerRef); } catch { }
+        }
+    }
+
+    private async Task HandleFocusOut()
+    {
+        // Small delay to allow click on option to register before closing
+        await Task.Delay(150);
+        isOpen = false;
+        searchTerm = "";
+        highlightedIndex = -1;
+    }
+}
+
+
+
+
+
+

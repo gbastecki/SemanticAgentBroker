@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Semantic Agent Broker - ReAct AI Agent System with real-time monitoring" />
+    <title>Semantic Agent Broker</title>
+    <base href="/" />
+    <script>
+        window.themeManager = {
+            getTheme: function () {
+                try {
+                    var docTheme = document.documentElement.getAttribute('data-theme');
+                    if (docTheme === 'dark' || docTheme === 'light') return docTheme;
+                    var stored = localStorage.getItem('theme');
+                    if (stored === 'dark' || stored === 'light') return stored;
+                    var match = document.cookie.match(/(?:^|; )theme=(dark|light)/);
+                    if (match) return match[1];
+                } catch (e) { }
+                return 'light';
+            },
+            setTheme: function (theme) {
+                try {
+                    var valid = (theme === 'dark') ? 'dark' : 'light';
+                    document.documentElement.setAttribute('data-theme', valid);
+                    localStorage.setItem('theme', valid);
+                    document.cookie = "theme=" + valid + ";path=/;max-age=31536000;SameSite=Lax";
+                } catch (e) { }
+            },
+            initTheme: function () {
+                var theme = this.getTheme();
+                this.setTheme(theme);
+            }
+        };
+        window.themeManager.initTheme();
+    </script>
+    <link rel="preload" id="webassembly" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="SemanticAgentBroker.Client.styles.css" rel="stylesheet" />
+    <script type="importmap"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="loading-screen">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Initializing Agent Broker...</div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="">Reload</a>
+        <span class="dismiss">&times;</span>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>
+

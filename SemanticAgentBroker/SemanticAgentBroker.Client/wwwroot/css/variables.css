@@ -1,0 +1,89 @@
+/* ===========================================================================
+   Semantic Agent Broker - Design System (Light Mode)
+   Enterprise-grade, clean, readable, Material Symbols
+   =========================================================================== */
+
+/* ── CSS Variables ──────────────────────────────────────────────────────── */
+:root {
+    --bg-primary: #f4f6f9;
+    --bg-secondary: #ffffff;
+    --bg-surface: #ffffff;
+    --bg-card: rgba(255, 255, 255, 0.92);
+    --bg-glass: rgba(255, 255, 255, 0.7);
+    --bg-glass-hover: rgba(255, 255, 255, 0.95);
+    --bg-input: #f8f9fb;
+    --bg-sidebar: #1e293b;
+    --border-subtle: #e2e8f0;
+    --border-glass: #e2e8f0;
+    --border-accent: rgba(79, 70, 229, 0.35);
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --accent-indigo: #4f46e5;
+    --accent-indigo-glow: rgba(79, 70, 229, 0.15);
+    --accent-purple: #7c3aed;
+    --accent-cyan: #0891b2;
+    --accent-emerald: #059669;
+    --accent-amber: #d97706;
+    --accent-rose: #e11d48;
+    --log-system: #7c3aed;
+    --log-tool: #0891b2;
+    --log-reasoning: #059669;
+    --log-user: #d97706;
+    --log-info: #64748b;
+    --gradient-primary: linear-gradient(135deg, #4f46e5, #7c3aed);
+    --gradient-bg: linear-gradient(180deg, #f4f6f9 0%, #eef1f5 100%);
+    --gradient-card: linear-gradient(135deg, rgba(79, 70, 229, 0.04), rgba(124, 58, 237, 0.02));
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-glow: 0 0 20px var(--accent-indigo-glow);
+    --transition-fast: 150ms ease;
+    --transition-normal: 250ms ease;
+    --transition-slow: 400ms ease;
+    --scrollbar-thumb: rgba(0,0,0,0.15);
+    --scrollbar-thumb-hover: rgba(0,0,0,0.25);
+    --bg-code-block: #1e293b;
+    --text-code-block: #e2e8f0;
+    --bg-code-inline: rgba(79, 70, 229, 0.06);
+    --text-code-inline: var(--accent-indigo);
+    --plugin-tag-color: var(--accent-indigo);
+    --plugin-tag-bg: rgba(79, 70, 229, 0.08);
+}
+
+[data-theme="dark"] {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-surface: #1a1a2e;
+    --bg-card: rgba(26, 26, 46, 0.92);
+    --bg-glass: rgba(26, 26, 46, 0.7);
+    --bg-glass-hover: rgba(26, 26, 46, 0.95);
+    --bg-input: #151525;
+    --bg-sidebar: #0f0f1a;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-glass: rgba(255, 255, 255, 0.1);
+    --border-accent: rgba(99, 102, 241, 0.35);
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --gradient-bg: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+    --gradient-card: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(124, 58, 237, 0.04));
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --scrollbar-thumb: rgba(255,255,255,0.2);
+    --scrollbar-thumb-hover: rgba(255,255,255,0.3);
+    --shadow-card: 0 15px 35px rgba(0, 0, 0, 0.4);
+    --bg-code-block: rgba(0, 0, 0, 0.5);
+    --text-code-block: #f8fafc;
+    --bg-code-inline: rgba(255, 255, 255, 0.15);
+    --text-code-inline: #a5b4fc;
+    --plugin-tag-color: #a5b4fc;
+    --plugin-tag-bg: rgba(165, 180, 252, 0.15);
+}

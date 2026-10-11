@@ -1,0 +1,97 @@
+@inject ISignalRService SignalR
+
+<div class="top-row ps-3">
+    <div class="d-flex align-items-center justify-content-between w-100 flex-column">
+        <a class="navbar-brand" href="">
+            Semantic Agent Broker
+        </a>
+        <span class="d-flex align-items-center gap-2 text-xs nav-connection-status">
+            <span class="connection-dot @connectionClass"></span>
+            @connectionText
+        </span>
+    </div>
+</div>
+
+<div class="nav-scrollable">
+    <nav class="flex-column">
+        <div class="nav-item ">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </NavLink>
+        </div>
+        <div class="nav-item ">
+            <NavLink class="nav-link" href="queue">
+                <span class="material-symbols-outlined">list_alt</span>
+                Task Queue
+            </NavLink>
+        </div>
+        
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <div class="nav-item ">
+                    <NavLink class="nav-link" href="plugins">
+                        <span class="material-symbols-outlined">extension</span>
+                        Plugins
+                    </NavLink>
+                </div>
+                <div class="nav-item ">
+                    <NavLink class="nav-link" href="users">
+                        <span class="material-symbols-outlined">person</span>
+                        Users
+                    </NavLink>
+                </div>
+                <div class="nav-item ">
+                    <NavLink class="nav-link" href="groups">
+                        <span class="material-symbols-outlined">group</span>
+                        Groups
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <div class="mt-auto"></div>
+        <hr class="nav-divider" />
+        <div class="nav-item ">
+            <NavLink class="nav-link" href="about">
+                <span class="material-symbols-outlined">info</span>
+                About
+            </NavLink>
+        </div>
+        <div class="nav-item ">
+            <a class="nav-link" href="https://github.com/gbastecki/SemanticAgentBroker" target="_blank" rel="noopener noreferrer">
+                <span class="material-symbols-outlined">code</span>
+                GitHub
+            </a>
+        </div>
+
+        <div class="nav-item ">
+            <button class="nav-link btn-logout" @onclick="ToggleTheme">
+                <span class="material-symbols-outlined">
+                    @(currentTheme == "light" ? "dark_mode" : "light_mode")
+                </span>
+                Theme: @(currentTheme == "light" ? "Light" : "Dark")
+            </button>
+        </div>
+
+        <div class="nav-item  mb-3">
+            <button class="nav-link btn-logout" @onclick="HandleLogout">
+                <span class="material-symbols-outlined">logout</span>
+                Logout
+            </button>
+        </div>
+    </nav>
+</div>
+
+@code {
+    [Inject] private SemanticAgentBroker.Client.Features.Auth.ClientAuthService AuthService { get; set; } = default!;
+    [Inject] private NavigationManager NavManager { get; set; } = default!;
+
+    private async Task HandleLogout()
+    {
+        await AuthService.LogoutAsync();
+        NavManager.NavigateTo("/login", forceLoad: true);
+    }
+}
+
+
