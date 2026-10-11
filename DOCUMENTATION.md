@@ -2105,6 +2105,7 @@ SemanticAgentBroker.UnitTests/
 │   ├── TestDatabaseFixtureTests.cs                     # Database test fixture lifecycle, isolated SQLite instances, schema initialization, and disposal teardown
 │   └── TestWorkspaceFixture.cs                         # Isolated filesystem workspace fixture with lock-free teardown
 └── MSTestSettings.cs                                   # Global assembly-level parallelization configuration ([assembly: Parallelize(Scope = ExecutionScope.MethodLevel)])
+```
 
 ---
 
