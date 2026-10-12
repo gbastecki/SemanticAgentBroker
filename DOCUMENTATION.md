@@ -93,18 +93,31 @@ The execution engine implements a Reasoning-Acting (ReAct) loop with a two-phase
 The `ReactExecutionEngine.ExecuteAsync` method is the main orchestrator. Its lifecycle:
 
 1. **Initialize** - Resolve task state, determine step budget (unbounded by default unless constrained by client request or plugin task definition via `maxSteps`), set up semaphore ownership tracking
+
 2. **Loop** (unbounded by default, or up to `maxSteps` when specified):
+   
    a. **Check user interruptions** - If a user interruption is queued via `SendInterruption`, the message is captured into `_task_state.json` and `_task_state.md` under `UserDirectives`, recorded as a non-error step, and exempted from consuming the agent's execution step quota (`stepsExecutedInRun`). The loop continues immediately to inject the directive into the next reasoning step
+   
    b. **Build context** - `TaskStateManager.BuildContextInjectionAsync` produces a tiered state snapshot, dynamically calculating token budgets while reserving guaranteed completion tokens (`outputReserve = Math.Min(_aiOptions.MaxTokensPerRequest, maxContextTokens / 2)`) for model reasoning output. Active user directives are placed prominently under `## 🚨 Active User Directives` at the top of the context and are never collapsed
+   
    c. **Reason** - `SubagentExecutor.ExecuteStepAsync` returns structured output (thought, plan, actions, final answer). When the model returns both executable tool actions and a `FinalAnswer`, valid actions are prioritized and executed first, deferring `FinalAnswer` until tool results are observed
+   
    d. **Runtime plan deduplication** - If the model returns an updated `Plan:`, the engine compares it to the latest persisted plan version; identical plans are not re-saved to the database, re-broadcast over SignalR, or re-written to `_runtime_plan.md`, preventing version inflation and redundant disk I/O
+   
    e. **Inferred action safety & loop detection** - Inferred tool actions (`IsInferred: true`) do not reset reasoning loop counters (`consecutivePlanUpdates`), and if the model emits consecutive repeated inferred actions without progress, a warning is logged and the loop terminates safely to prevent runaway cycles
+   
    f. **Check termination** - If `FinalAnswer` is present (without deferred actions), anchor workspace references (`TryAnchorResultFromWorkspaceAsync`), finalize state (`FinalizeStateAsync`), and return
+   
    g. **Partition actions** - Split into safe and dangerous tool calls
+   
    h. **Execute safe actions** - Run in parallel via `Task.WhenAll`, collecting observations tagged with their original declaration index
+   
    i. **Execute dangerous actions** - Release semaphore → prompt user approval → re-acquire semaphore → execute sequentially
+   
    j. **Record observations** - Update state and chat message logs in the original declared order, correlating results by `(StepNumber, Action)` pair and `ActionInput`
+   
    k. **Advance step counter** - Increments reasoning cycle counter (`step`) per ReAct turn (1, 2, ...), executing all approved batch actions within the step without artificially consuming future reasoning turns
+
 3. **Finalize** - If loop exhausts without `FinalAnswer` or encounters an unhandled error, finalize state (`FinalizeStateAsync`) and return a failure message
 - **Cancellation Token Propagation**: `ReactExecutionEngine`, `SubagentExecutor`, `LlmRepairJsonAsync`, and `ToolExecutionService` check for cancellation requests and rethrow `OperationCanceledException` immediately, ensuring external task cancellations abort loops cleanly without being swallowed as step or tool errors.
 - **Terminal Result Anchoring**: `TryAnchorResultFromWorkspaceAsync` executes prior to `FinalizeStateAsync` across normal completion. Anchoring strictly rejects path traversal (`..`), empty or whitespace-only files, and internal framework files prefixed with `_` (`_task_state.md`, `_runtime_plan.md`, `_walkthrough.md`), and supports both markdown (`.md`) and text (`.txt`) reports. Bare file path detection is constrained to concise final answer texts (< 500 characters) to avoid false matches on long outputs.
@@ -1146,7 +1159,7 @@ Maps task roles to specific models. If `ProviderId` is omitted, the load balance
 Each connection defines an LLM provider endpoint.
 
 | Property | Type | Description |
-|----------|------|---------|-------------|
+|----------|------|-------------|
 | `Id` | `string` | Unique identifier (used for load balancing) |
 | `EndpointName` | `string` | Display name |
 | `ProviderType` | `string` | `"Ollama"`, `"OpenAiCompatible"`, or `"OpenAi"` |
